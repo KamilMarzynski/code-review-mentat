@@ -1,0 +1,15 @@
+{
+  "name": "code-review-cli",
+  "module": "index.ts",
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@clack/prompts": "^0.11.0"
+  }
+}
