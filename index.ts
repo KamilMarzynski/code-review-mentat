@@ -1,9 +1,12 @@
 import * as clack from '@clack/prompts';
 import { fetch } from 'bun';
 import { simpleGit } from 'simple-git';
-import type { PRBaseData } from './types';
+import { HumanMessage } from '@langchain/core/messages';
+import type { MRBaseData } from './types';
+import graph from './graph';
 
 const { BB_TOKEN } = process.env;
+const git = simpleGit();
 
 /**
  * Usage:
@@ -13,7 +16,7 @@ const { BB_TOKEN } = process.env;
  *   https://git.viessmann.com/rest/api/1.0/projects/CA/repos/mw-viguide-planning-projects/pull-requests?state=OPEN&limit=50
  */
 
-function buildBitbucketServerPrListUrl(
+function buildBitbucketServerMrListUrl(
   sshRemote: string,
   opts: { state?: string; limit?: number } = {},
 ): string | undefined {
@@ -21,16 +24,16 @@ function buildBitbucketServerPrListUrl(
   const limit = opts.limit ?? 50;
 
   // Matches: ssh://git@HOST:PORT/PROJECTKEY/repo-slug(.git)?
-  const m = sshRemote.trim().match(
+  const regexpMatchArray = sshRemote.trim().match(
     /^ssh:\/\/git@([^:/]+)(?::(\d+))?\/([^/]+)\/(.+?)(?:\.git)?$/,
   );
-  if (!m) {
+  if (!regexpMatchArray) {
     return undefined;
   }
 
-  const host = m[1];
-  const projectKey = m[3]?.toUpperCase();
-  const repoSlug = m[4];
+  const host = regexpMatchArray[1];
+  const projectKey = regexpMatchArray[3]?.toUpperCase();
+  const repoSlug = regexpMatchArray[4];
 
   if (!projectKey || !repoSlug) {
     return undefined;
@@ -46,7 +49,7 @@ function buildBitbucketServerPrListUrl(
   )}`;
 }
 
-async function fetchPRsFromBitbucketServer(apiUrl: string): Promise<PRBaseData[]> {
+async function fetchMRsFromBitbucketServer(apiUrl: string): Promise<MRBaseData[]> {
   const response = await fetch(apiUrl, {
     headers: {
       Authorization: `Bearer ${BB_TOKEN}`,
@@ -54,27 +57,27 @@ async function fetchPRsFromBitbucketServer(apiUrl: string): Promise<PRBaseData[]
   });
 
   if (!response.ok) {
-    throw new Error(`Failed to fetch PRs: ${response.status} ${response.statusText}`);
+    throw new Error(`Failed to fetch MRs: ${response.status} ${response.statusText}`);
   }
 
   const data: any = await response.json();
 
-  return data.values.map((prObject: unknown): PRBaseData => ({
-    id: (prObject as any).id,
-    title: (prObject as any).title,
-    description: (prObject as any).description,
+  return data.values.map((mrObject: unknown): MRBaseData => ({
+    id: (mrObject as any).id,
+    title: (mrObject as any).title,
+    description: (mrObject as any).description,
     source: {
-      name: (prObject as any).fromRef?.displayId,
-      commitHash: (prObject as any).fromRef?.latestCommit,
+      name: (mrObject as any).fromRef?.displayId,
+      commitHash: (mrObject as any).fromRef?.latestCommit,
     },
     target: {
-      name: (prObject as any).toRef?.displayId,
-      commitHash: (prObject as any).toRef?.latestCommit,
+      name: (mrObject as any).toRef?.displayId,
+      commitHash: (mrObject as any).toRef?.latestCommit,
     },
   }));
 }
 
-const allRemotes = await simpleGit().getRemotes(true);
+const allRemotes = await git.getRemotes(true);
 
 const selectedRemote = await clack.select({
   message: 'Select a remote to work with:',
@@ -88,17 +91,25 @@ const selectedRemote = await clack.select({
 // then based on this check try with all matching providers, one of them should work
 // if none works, show an error message to the user
 
-const fetchPrsUrl = buildBitbucketServerPrListUrl(selectedRemote.toString());
+const fetchMrsUrl = buildBitbucketServerMrListUrl(selectedRemote.toString());
 
-if (!fetchPrsUrl) {
+if (!fetchMrsUrl) {
   throw new Error('Could not build Bitbucket Server PR list URL from the selected remote.');
 }
 
-const prs = await fetchPRsFromBitbucketServer(fetchPrsUrl);
+const mrs = await fetchMRsFromBitbucketServer(fetchMrsUrl);
 
-await clack.select({
+const pickedMr = await clack.select({
   message: 'What MR we are working on?',
-  options: prs.map((pr) => ({
+  options: mrs.map((pr) => ({
     label: `${pr.title}`, value: pr,
   })),
 });
+const valueOfPickedMr = pickedMr as MRBaseData; // TODO: fix types
+
+const fullDiff = await git.diff([`${valueOfPickedMr.target.commitHash}...${valueOfPickedMr.source.commitHash}`]);
+const fileNames = await git.diffSummary(['--name-only', `${valueOfPickedMr.target.commitHash}...${valueOfPickedMr.source.commitHash}`]);
+
+const message = new HumanMessage(`Here is the merge request data:\nTitle: ${valueOfPickedMr.title}\nDescription: ${valueOfPickedMr.description}\nSource Branch: ${valueOfPickedMr.source.name} (${valueOfPickedMr.source.commitHash})\nTarget Branch: ${valueOfPickedMr.target.name} (${valueOfPickedMr.target.commitHash}). Names of changed files: ${fileNames.files.map((f) => f.file).join(', ')}.\nHere is the full diff of the merge request:\n${fullDiff}\nBased on this information, can you help me with the code review?`);
+
+await graph.invoke({ messages: [message] });
