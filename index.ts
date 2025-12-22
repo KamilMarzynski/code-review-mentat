@@ -1,9 +1,8 @@
 import * as clack from '@clack/prompts';
 import { fetch } from 'bun';
 import { simpleGit } from 'simple-git';
-import { HumanMessage } from '@langchain/core/messages';
 import type { MRBaseData } from './types';
-import graph from './graph';
+import startReview from './graph';
 
 const { BB_TOKEN } = process.env;
 const git = simpleGit();
@@ -77,39 +76,56 @@ async function fetchMRsFromBitbucketServer(apiUrl: string): Promise<MRBaseData[]
   }));
 }
 
-const allRemotes = await git.getRemotes(true);
+const main = async () => {
+  const allRemotes = await git.getRemotes(true);
 
-const selectedRemote = await clack.select({
-  message: 'Select a remote to work with:',
-  options: allRemotes.map((remote) => ({
-    label: remote.name,
-    value: remote.refs.fetch,
-  })),
-});
+  const selectedRemote = await clack.select({
+    message: 'Select a remote to work with:',
+    options: allRemotes.map((remote) => ({
+      label: remote.name,
+      value: remote.refs.fetch,
+    })),
+  });
 
-// TODO: automatically verify which provider is it, check if it's cloud or some hosted server
-// then based on this check try with all matching providers, one of them should work
-// if none works, show an error message to the user
+  // TODO: automatically verify which provider is it, check if it's cloud or some hosted server
+  // then based on this check try with all matching providers, one of them should work
+  // if none works, show an error message to the user
 
-const fetchMrsUrl = buildBitbucketServerMrListUrl(selectedRemote.toString());
+  const fetchMrsUrl = buildBitbucketServerMrListUrl(selectedRemote.toString());
 
-if (!fetchMrsUrl) {
-  throw new Error('Could not build Bitbucket Server PR list URL from the selected remote.');
-}
+  if (!fetchMrsUrl) {
+    throw new Error('Could not build Bitbucket Server PR list URL from the selected remote.');
+  }
 
-const mrs = await fetchMRsFromBitbucketServer(fetchMrsUrl);
+  const mrs = await fetchMRsFromBitbucketServer(fetchMrsUrl);
 
-const pickedMr = await clack.select({
-  message: 'What MR we are working on?',
-  options: mrs.map((pr) => ({
-    label: `${pr.title}`, value: pr,
-  })),
-});
-const valueOfPickedMr = pickedMr as MRBaseData; // TODO: fix types
+  const pickedMr = await clack.select({
+    message: 'What MR we are working on?',
+    options: mrs.map((pr) => ({
+      label: `${pr.title}`, value: pr,
+    })),
+  });
+  const valueOfPickedMr = pickedMr as MRBaseData; // TODO: fix types
 
-const fullDiff = await git.diff([`${valueOfPickedMr.target.commitHash}...${valueOfPickedMr.source.commitHash}`]);
-const fileNames = await git.diffSummary(['--name-only', `${valueOfPickedMr.target.commitHash}...${valueOfPickedMr.source.commitHash}`]);
+  const fullDiff = await git.diff([`${valueOfPickedMr.target.commitHash}...${valueOfPickedMr.source.commitHash}`]);
+  const fileNames = await git.diffSummary(['--name-only', `${valueOfPickedMr.target.commitHash}...${valueOfPickedMr.source.commitHash}`]);
+  const commitLogs = await git.log({
+    from: valueOfPickedMr.target.commitHash,
+    to: valueOfPickedMr.source.commitHash,
+  });
+  const commitMessages = commitLogs.all.map((commit) => commit.message);
 
-const message = new HumanMessage(`Here is the merge request data:\nTitle: ${valueOfPickedMr.title}\nDescription: ${valueOfPickedMr.description}\nSource Branch: ${valueOfPickedMr.source.name} (${valueOfPickedMr.source.commitHash})\nTarget Branch: ${valueOfPickedMr.target.name} (${valueOfPickedMr.target.commitHash}). Names of changed files: ${fileNames.files.map((f) => f.file).join(', ')}.\nHere is the full diff of the merge request:\n${fullDiff}\nBased on this information, can you help me with the code review?`);
+  await startReview({
+    commits: commitMessages,
+    title: valueOfPickedMr.title,
+    description: valueOfPickedMr.description || '',
+    editedFiles: fileNames.files.map((f) => f.file),
+    sourceHash: valueOfPickedMr.source.commitHash,
+    sourceName: valueOfPickedMr.source.name,
+    targetHash: valueOfPickedMr.target.commitHash,
+    targetName: valueOfPickedMr.target.name,
+    diff: fullDiff,
+  });
+};
 
-await graph.invoke({ messages: [message] });
+main();
