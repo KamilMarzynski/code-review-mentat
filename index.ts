@@ -1,6 +1,7 @@
 import * as clack from '@clack/prompts';
 import { fetch } from 'bun';
 import { simpleGit } from 'simple-git';
+import { writeFileSync } from 'fs';
 import type { MRBaseData } from './types';
 import startReview from './graph';
 
@@ -22,7 +23,6 @@ function buildBitbucketServerMrListUrl(
   const state = opts.state ?? 'OPEN';
   const limit = opts.limit ?? 50;
 
-  // Matches: ssh://git@HOST:PORT/PROJECTKEY/repo-slug(.git)?
   const regexpMatchArray = sshRemote.trim().match(
     /^ssh:\/\/git@([^:/]+)(?::(\d+))?\/([^/]+)\/(.+?)(?:\.git)?$/,
   );
@@ -48,6 +48,36 @@ function buildBitbucketServerMrListUrl(
   )}`;
 }
 
+function buildPullRequestCommitsUrl(
+  sshRemote: string, // e.g. "https://git.viessmann.com"
+  pr: MRBaseData,
+): string | undefined {
+  const { pullRequestId } = pr;
+
+  const regexpMatchArray = sshRemote.trim().match(
+    /^ssh:\/\/git@([^:/]+)(?::(\d+))?\/([^/]+)\/(.+?)(?:\.git)?$/,
+  );
+  if (!regexpMatchArray) {
+    return undefined;
+  }
+
+  const host = regexpMatchArray[1];
+  const projectKey = regexpMatchArray[3]?.toUpperCase();
+  const repoSlug = regexpMatchArray[4];
+
+  if (!projectKey || !repoSlug) {
+    return undefined;
+  }
+
+  return (
+    `https://${host}/rest/api/1.0/projects/${encodeURIComponent(
+      projectKey,
+    )}/repos/${encodeURIComponent(
+      repoSlug,
+    )}/pull-requests/${pullRequestId}/commits`
+  );
+}
+
 async function fetchMRsFromBitbucketServer(apiUrl: string): Promise<MRBaseData[]> {
   const response = await fetch(apiUrl, {
     headers: {
@@ -65,6 +95,9 @@ async function fetchMRsFromBitbucketServer(apiUrl: string): Promise<MRBaseData[]
     id: (mrObject as any).id,
     title: (mrObject as any).title,
     description: (mrObject as any).description,
+    projectKey: (mrObject as any).toRef?.repository?.project?.key,
+    repoSlug: (mrObject as any).toRef?.repository?.slug,
+    pullRequestId: (mrObject as any).id,
     source: {
       name: (mrObject as any).fromRef?.displayId,
       commitHash: (mrObject as any).fromRef?.latestCommit,
@@ -109,11 +142,30 @@ const main = async () => {
 
   const fullDiff = await git.diff([`${valueOfPickedMr.target.commitHash}...${valueOfPickedMr.source.commitHash}`]);
   const fileNames = await git.diffSummary(['--name-only', `${valueOfPickedMr.target.commitHash}...${valueOfPickedMr.source.commitHash}`]);
-  const commitLogs = await git.log({
-    from: valueOfPickedMr.target.commitHash,
-    to: valueOfPickedMr.source.commitHash,
+  console.log('Edited files:', fileNames.files.map((f) => f.file));
+
+  const commitsUrl = buildPullRequestCommitsUrl(selectedRemote.toString(), valueOfPickedMr);
+
+  console.log('Commits URL:', commitsUrl);
+
+  if (!commitsUrl) {
+    throw new Error('Could not build Bitbucket Server PR commits URL from the selected MR.');
+  }
+
+  const response = await fetch(commitsUrl, {
+    headers: {
+      Authorization: `Bearer ${BB_TOKEN}`,
+    },
   });
-  const commitMessages = commitLogs.all.map((commit) => commit.message);
+
+  if (!response.ok) {
+    throw new Error(`Failed to fetch MRs: ${response.status} ${response.statusText}`);
+  }
+
+  const data: any = await response.json();
+
+  const commitMessages = data.values.map((commit: any) => commit.message);
+  console.log('Commits fetched from API:', commitMessages);
 
   await startReview({
     commits: commitMessages,
