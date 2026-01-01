@@ -1,4 +1,4 @@
-export type MRBaseData = {
+export type PrBaseData = {
   id: number;
   title: string;
   description: string;
