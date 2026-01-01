@@ -1,117 +1,15 @@
 import * as clack from '@clack/prompts';
-import { fetch } from 'bun';
-import { simpleGit } from 'simple-git';
 import { exit } from 'process';
-import type { MRBaseData } from './types';
+import type { PullRequest } from './providers/types';
+import BitbucketProvider from './providers/bitbucket';
+import GitOperations from './git';
 import startReview from './graph';
 
-const { BB_TOKEN } = process.env;
-console.log(BB_TOKEN);
-const git = simpleGit();
-
-/**
- * Usage:
- *   node bb-pr-url.ts 'ssh://git@git.viessmann.com:7999/ca/mw-viguide-planning-projects.git'
- *
- * Output:
- *   https://git.viessmann.com/rest/api/1.0/projects/CA/repos/mw-viguide-planning-projects/pull-requests?state=OPEN&limit=50
- */
-
-function buildBitbucketServerMrListUrl(
-  sshRemote: string,
-  opts: { state?: string; limit?: number } = {},
-): string | undefined {
-  const state = opts.state ?? 'OPEN';
-  const limit = opts.limit ?? 50;
-
-  const regexpMatchArray = sshRemote.trim().match(
-    /^ssh:\/\/git@([^:/]+)(?::(\d+))?\/([^/]+)\/(.+?)(?:\.git)?$/,
-  );
-  if (!regexpMatchArray) {
-    return undefined;
-  }
-
-  const host = regexpMatchArray[1];
-  const projectKey = regexpMatchArray[3]?.toUpperCase();
-  const repoSlug = regexpMatchArray[4];
-
-  if (!projectKey || !repoSlug) {
-    return undefined;
-  }
-
-  // REST base for Bitbucket Data Center
-  return `https://${host}/rest/api/1.0/projects/${encodeURIComponent(
-    projectKey,
-  )}/repos/${encodeURIComponent(
-    repoSlug,
-  )}/pull-requests?state=${encodeURIComponent(state)}&limit=${encodeURIComponent(
-    String(limit),
-  )}`;
-}
-
-function buildPullRequestCommitsUrl(
-  sshRemote: string, // e.g. "https://git.viessmann.com"
-  pr: MRBaseData,
-): string | undefined {
-  const { pullRequestId } = pr;
-
-  const regexpMatchArray = sshRemote.trim().match(
-    /^ssh:\/\/git@([^:/]+)(?::(\d+))?\/([^/]+)\/(.+?)(?:\.git)?$/,
-  );
-  if (!regexpMatchArray) {
-    return undefined;
-  }
-
-  const host = regexpMatchArray[1];
-  const projectKey = regexpMatchArray[3]?.toUpperCase();
-  const repoSlug = regexpMatchArray[4];
-
-  if (!projectKey || !repoSlug) {
-    return undefined;
-  }
-
-  return (
-    `https://${host}/rest/api/1.0/projects/${encodeURIComponent(
-      projectKey,
-    )}/repos/${encodeURIComponent(
-      repoSlug,
-    )}/pull-requests/${pullRequestId}/commits`
-  );
-}
-
-async function fetchMRsFromBitbucketServer(apiUrl: string): Promise<MRBaseData[]> {
-  const response = await fetch(apiUrl, {
-    headers: {
-      Authorization: `Bearer ${BB_TOKEN}`,
-    },
-  });
-
-  if (!response.ok) {
-    throw new Error(`Failed to fetch MRs: ${response.status} ${response.statusText}`);
-  }
-
-  const data: any = await response.json();
-
-  return data.values.map((mrObject: unknown): MRBaseData => ({
-    id: (mrObject as any).id,
-    title: (mrObject as any).title,
-    description: (mrObject as any).description,
-    projectKey: (mrObject as any).toRef?.repository?.project?.key,
-    repoSlug: (mrObject as any).toRef?.repository?.slug,
-    pullRequestId: (mrObject as any).id,
-    source: {
-      name: (mrObject as any).fromRef?.displayId,
-      commitHash: (mrObject as any).fromRef?.latestCommit,
-    },
-    target: {
-      name: (mrObject as any).toRef?.displayId,
-      commitHash: (mrObject as any).toRef?.latestCommit,
-    },
-  }));
-}
-
 const main = async () => {
-  const allRemotes = await git.getRemotes(true);
+  const git = new GitOperations();
+
+  // Step 1: Select remote
+  const allRemotes = await git.getRemotes();
 
   const selectedRemote = await clack.select({
     message: 'Select a remote to work with:',
@@ -121,69 +19,49 @@ const main = async () => {
     })),
   });
 
-  // TODO: automatically verify which provider is it, check if it's cloud or some hosted server
-  // then based on this check try with all matching providers, one of them should work
-  // if none works, show an error message to the user
+  // Step 2: Initialize provider and fetch PRs
+  const provider = new BitbucketProvider(selectedRemote.toString());
+  const prs = await provider.fetchPullRequests();
 
-  const fetchMrsUrl = buildBitbucketServerMrListUrl(selectedRemote.toString());
-
-  if (!fetchMrsUrl) {
-    throw new Error('Could not build Bitbucket Server PR list URL from the selected remote.');
-  }
-
-  const mrs = await fetchMRsFromBitbucketServer(fetchMrsUrl);
-
-  const pickedMr = await clack.select({
-    message: 'What MR we are working on?',
-    options: mrs.map((pr) => ({
-      label: `${pr.title}`, value: pr,
+  // Step 3: Select PR
+  const pickedPr = await clack.select({
+    message: 'What PR are we working on?',
+    options: prs.map((pr) => ({
+      label: `${pr.title}`,
+      value: pr,
     })),
   });
-  const valueOfPickedMr = pickedMr as MRBaseData; // TODO: fix types
+  const selectedPr = pickedPr as PullRequest;
 
-  const currentBranch = (await git.branch()).current;
+  // Step 4: Git operations - checkout and get diff
+  const currentBranch = await git.getCurrentBranch();
 
-  // we need to make sure we have the latest changes for diff
+  // We need to make sure we have the latest changes for diff
   await git.pull(selectedRemote.toString());
-  // checkout the source branch of the MR - for review since claude code will read files
-  await git.checkout(valueOfPickedMr.source.commitHash);
+  // Checkout the source branch of the PR - for review since claude code will read files
+  await git.checkout(selectedPr.source.commitHash);
 
-  const fullDiff = await git.diff([`${valueOfPickedMr.target.commitHash}...${valueOfPickedMr.source.commitHash}`]);
-  const fileNames = await git.diffSummary(['--name-only', `${valueOfPickedMr.target.commitHash}...${valueOfPickedMr.source.commitHash}`]);
-  console.log('Edited files:', fileNames.files.map((f) => f.file));
+  const fullDiff = await git.getDiff(selectedPr.target.commitHash, selectedPr.source.commitHash);
+  const editedFiles = await git.getDiffSummary(
+    selectedPr.target.commitHash,
+    selectedPr.source.commitHash,
+  );
+  console.log('Edited files:', editedFiles);
 
-  const commitsUrl = buildPullRequestCommitsUrl(selectedRemote.toString(), valueOfPickedMr);
-
-  console.log('Commits URL:', commitsUrl);
-
-  if (!commitsUrl) {
-    throw new Error('Could not build Bitbucket Server PR commits URL from the selected MR.');
-  }
-
-  const response = await fetch(commitsUrl, {
-    headers: {
-      Authorization: `Bearer ${BB_TOKEN}`,
-    },
-  });
-
-  if (!response.ok) {
-    throw new Error(`Failed to fetch MRs: ${response.status} ${response.statusText}`);
-  }
-
-  const data: any = await response.json();
-
-  const commitMessages = data.values.map((commit: any) => commit.message);
+  // Step 5: Fetch commit messages
+  const commitMessages = await provider.fetchCommits(selectedPr);
   console.log('Commits fetched from API:', commitMessages);
 
+  // Step 6: Run review
   const res = await startReview({
     commits: commitMessages,
-    title: valueOfPickedMr.title,
-    description: valueOfPickedMr.description || '',
-    editedFiles: fileNames.files.map((f) => f.file),
-    sourceHash: valueOfPickedMr.source.commitHash,
-    sourceName: valueOfPickedMr.source.name,
-    targetHash: valueOfPickedMr.target.commitHash,
-    targetName: valueOfPickedMr.target.name,
+    title: selectedPr.title,
+    description: selectedPr.description || '',
+    editedFiles,
+    sourceHash: selectedPr.source.commitHash,
+    sourceName: selectedPr.source.name,
+    targetHash: selectedPr.target.commitHash,
+    targetName: selectedPr.target.name,
     diff: fullDiff,
   });
 
@@ -192,7 +70,7 @@ const main = async () => {
   console.log('Review comments:', res.comments);
   console.log('Review completed.');
 
-  // checkout back to the original current branch
+  // Step 7: Checkout back to the original branch
   // TODO: handle failures too
   await git.checkout(currentBranch);
   exit(1);

@@ -49,12 +49,12 @@ const agent = createAgent({
   model,
   tools,
   systemPrompt:
-    'You are an assistant capable of fetching information about merge reqeust based on merge request history.'
-    + 'You should be concrete and percise in your search. Limit the number of tool calls to avoid excessive calls. You are limitted to 5 tool calls per merge request.'
-    + 'Your task is to find information about jira ticket in merge request data, commits, descritpion or title and fetch this ticket information from jira system.'
-    + 'Next try to find information in confluence system about anything that migh help to do code review of this merge request.'
+    'You are an assistant capable of fetching information about pull request based on pull request history.'
+    + 'You should be concrete and percise in your search. Limit the number of tool calls to avoid excessive calls. You are limitted to 5 tool calls per pull request.'
+    + 'Your task is to find information about jira ticket in pull request data, commits, descritpion or title and fetch this ticket information from jira system.'
+    + 'Next try to find information in confluence system about anything that migh help to do code review of this pull request.'
     + 'Do not make code review yet, just collect information using available tools.'
-    + 'As a result of your research, provide a summary of found information that might help to do code review of this merge request. Do not provide information that can be easile found in merge request itself, only provide additional context information.'
+    + 'As a result of your research, provide a summary of found information that might help to do code review of this pull request. Do not provide information that can be easile found in pull request itself, only provide additional context information.'
     + 'Ensure that you response is suited for an AI agent to use it in code review.',
 });
 
@@ -77,21 +77,17 @@ const reviewState = z.object({
 async function contextSearchCall(state: z.infer<typeof reviewState>) {
   console.log('Invoking agent');
 
-  const message = new HumanMessage(`Please analyze the following merge request details to gather relevant context for a code review.
-  Merge Request Title: ${state.title}
+  const message = new HumanMessage(`Please analyze the following pull request details to gather relevant context for a code review.
+  Pull Request Title: ${state.title}
   Description: ${state.description ?? 'No description provided.'}
   Commits: ${state.commits.join('\n')}
   Edited Files: ${state.editedFiles.join(', ')}`);
-
-  console.debug('Message to agent:', message.text);
 
   const contextResponse = await agent.invoke({
     messages: [...state.messages, message],
   });
 
   const contextMessage = contextResponse.messages[contextResponse.messages.length - 1];
-
-  console.log('Context message from agent:', contextMessage?.text);
 
   return {
     ...state,
@@ -102,7 +98,7 @@ async function contextSearchCall(state: z.infer<typeof reviewState>) {
 
 async function reviewCall(state: z.infer<typeof reviewState>) {
   const prompt = [
-    'You are performing a code review for a merge request.',
+    'You are performing a code review for a pull request.',
     '',
     '## Inputs',
     `Edited files (${state.editedFiles.length}):`,
@@ -114,7 +110,7 @@ async function reviewCall(state: z.infer<typeof reviewState>) {
     'Deep context (Jira/Confluence):',
     JSON.stringify(state.context, null, 2),
     '',
-    'MR diff:',
+    'PR diff:',
     state.diff,
     '',
     '## Instructions',
