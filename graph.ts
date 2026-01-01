@@ -1,5 +1,5 @@
 import { ChatAnthropic } from '@langchain/anthropic';
-import { createAgent, toolCallLimitMiddleware } from 'langchain';
+import { createAgent } from 'langchain';
 import { registry } from '@langchain/langgraph/zod';
 import { HumanMessage, type BaseMessage } from '@langchain/core/messages';
 import {
@@ -10,6 +10,11 @@ import { MultiServerMCPClient } from '@langchain/mcp-adapters';
 import { query } from '@anthropic-ai/claude-agent-sdk';
 
 const npxCmd = process.platform === 'win32' ? 'npx.cmd' : 'npx';
+
+const { PATH_TO_CLAUDE } = process.env;
+if (!PATH_TO_CLAUDE) {
+  throw new Error('PATH_TO_CLAUDE environment variable is not set.');
+}
 
 type ReviewComment = {
   file: string;
@@ -63,7 +68,8 @@ const reviewState = z.object({
     .array(z.custom<BaseMessage>())
     .register(registry, MessagesZodMeta),
   context: z.string().optional(),
-  commets: z.array(
+  result: z.string().optional(),
+  comments: z.array(
     z.custom<ReviewComment>(),
   ),
 });
@@ -147,6 +153,7 @@ async function reviewCall(state: z.infer<typeof reviewState>) {
   const q = query({
     prompt,
     options: {
+      pathToClaudeCodeExecutable: PATH_TO_CLAUDE,
       cwd: process.cwd(),
       settingSources: ['project'],
       systemPrompt: {
@@ -180,6 +187,9 @@ async function reviewCall(state: z.infer<typeof reviewState>) {
 
   // eslint-disable-next-line no-restricted-syntax
   for await (const msg of q) {
+    if (msg.type === 'user' || msg.type === 'assistant') {
+      console.log(JSON.stringify(msg.message.content, null, 2));
+    }
     if (msg.type === 'result') {
       finalResult = msg;
     }
@@ -189,12 +199,14 @@ async function reviewCall(state: z.infer<typeof reviewState>) {
     throw new Error(`Claude Code review failed: ${finalResult?.subtype ?? 'unknown'}`);
   }
 
+  const { result } = finalResult;
   const structured = finalResult.structured_output as { comments: ReviewComment[] } | undefined;
   const comments = structured?.comments ?? [];
 
   return {
     ...state,
-    commets: comments,
+    comments,
+    result,
   };
 }
 

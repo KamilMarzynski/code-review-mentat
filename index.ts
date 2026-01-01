@@ -1,11 +1,12 @@
 import * as clack from '@clack/prompts';
 import { fetch } from 'bun';
 import { simpleGit } from 'simple-git';
-import { writeFileSync } from 'fs';
+import { exit } from 'process';
 import type { MRBaseData } from './types';
 import startReview from './graph';
 
 const { BB_TOKEN } = process.env;
+console.log(BB_TOKEN);
 const git = simpleGit();
 
 /**
@@ -140,6 +141,13 @@ const main = async () => {
   });
   const valueOfPickedMr = pickedMr as MRBaseData; // TODO: fix types
 
+  const currentBranch = (await git.branch()).current;
+
+  // we need to make sure we have the latest changes for diff
+  await git.pull(selectedRemote.toString());
+  // checkout the source branch of the MR - for review since claude code will read files
+  await git.checkout(valueOfPickedMr.source.commitHash);
+
   const fullDiff = await git.diff([`${valueOfPickedMr.target.commitHash}...${valueOfPickedMr.source.commitHash}`]);
   const fileNames = await git.diffSummary(['--name-only', `${valueOfPickedMr.target.commitHash}...${valueOfPickedMr.source.commitHash}`]);
   console.log('Edited files:', fileNames.files.map((f) => f.file));
@@ -167,7 +175,7 @@ const main = async () => {
   const commitMessages = data.values.map((commit: any) => commit.message);
   console.log('Commits fetched from API:', commitMessages);
 
-  await startReview({
+  const res = await startReview({
     commits: commitMessages,
     title: valueOfPickedMr.title,
     description: valueOfPickedMr.description || '',
@@ -178,6 +186,16 @@ const main = async () => {
     targetName: valueOfPickedMr.target.name,
     diff: fullDiff,
   });
+
+  console.log('Review context:', res.context);
+  console.log('Review result:', res.result);
+  console.log('Review comments:', res.comments);
+  console.log('Review completed.');
+
+  // checkout back to the original current branch
+  // TODO: handle failures too
+  await git.checkout(currentBranch);
+  exit(1);
 };
 
 main();
