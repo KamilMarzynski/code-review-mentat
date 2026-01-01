@@ -1,7 +1,7 @@
 import * as clack from '@clack/prompts';
 import { exit } from 'process';
 import type { PullRequest } from './providers/types';
-import BitbucketProvider from './providers/bitbucket';
+import BitbucketServerProvider from './providers/bitbucket';
 import GitOperations from './git';
 import startReview from './graph';
 
@@ -20,7 +20,7 @@ const main = async () => {
   });
 
   // Step 2: Initialize provider and fetch PRs
-  const provider = new BitbucketProvider(selectedRemote.toString());
+  const provider = new BitbucketServerProvider(selectedRemote.toString());
   const prs = await provider.fetchPullRequests();
 
   // Step 3: Select PR

@@ -74,6 +74,8 @@ const reviewState = z.object({
   ),
 });
 
+type ReviewState = z.infer<typeof reviewState>;
+
 async function contextSearchCall(state: z.infer<typeof reviewState>) {
   console.log('Invoking agent');
 
@@ -223,16 +225,28 @@ type ReviewInput = {
   targetHash: string,
   targetName: string,
   description: string,
+  // TODO: allow passing additional context by user
+  userProvidedContext?: string,
+  // TODO: implement caching of context to avoid repeated searches
+  cachedContext?: string,
 };
 
-const startReview = (input: ReviewInput) => {
+type ReviewOutput = Required<Omit<ReviewState, 'commits' | 'diff' | 'editedFiles' | 'title' | 'description' | 'messages'>>;
+
+const startReview = async (input: ReviewInput): Promise<ReviewOutput> => {
   const {
     title, commits, diff, editedFiles, description,
   } = input;
 
-  return graph.invoke({
+  const response = await graph.invoke({
     commits, title, description, diff, editedFiles, messages: [],
   });
+
+  return {
+    comments: response.comments,
+    context: response.context || '',
+    result: response.result || '',
+  };
 };
 
 export default startReview;

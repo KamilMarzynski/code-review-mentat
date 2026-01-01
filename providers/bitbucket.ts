@@ -1,43 +1,20 @@
-import type {
-  GitProvider, RemoteInfo, PullRequest,
+import {
+  GitProvider, type RemoteInfo, type PullRequest,
 } from './types';
 
 const { BB_TOKEN } = process.env;
 
-export default class BitbucketProvider implements GitProvider {
+export default class BitbucketServerProvider implements GitProvider {
   name = 'Bitbucket Server';
 
   private remote: RemoteInfo;
 
   constructor(sshRemote: string) {
-    const parsed = this.parseRemote(sshRemote);
+    const parsed = GitProvider.parseRemote(sshRemote);
     if (!parsed) {
       throw new Error(`Invalid Bitbucket Server SSH remote: ${sshRemote}`);
     }
     this.remote = parsed;
-  }
-
-  private parseRemote(sshRemote: string): RemoteInfo | undefined {
-    const regexpMatchArray = sshRemote.trim().match(
-      /^ssh:\/\/git@([^:/]+)(?::(\d+))?\/([^/]+)\/(.+?)(?:\.git)?$/,
-    );
-    if (!regexpMatchArray) {
-      return undefined;
-    }
-
-    const host = regexpMatchArray[1];
-    const projectKey = regexpMatchArray[3]?.toUpperCase();
-    const repoSlug = regexpMatchArray[4];
-
-    if (!host || !projectKey || !repoSlug) {
-      return undefined;
-    }
-
-    return {
-      host,
-      projectKey,
-      repoSlug,
-    };
   }
 
   async fetchPullRequests(): Promise<PullRequest[]> {

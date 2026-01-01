@@ -1,7 +1,30 @@
-export interface GitProvider {
-  name: string;
-  fetchPullRequests(): Promise<PullRequest[]>;
-  fetchCommits(pr: PullRequest): Promise<string[]>;
+export abstract class GitProvider {
+  abstract name: string;
+  abstract fetchPullRequests(): Promise<PullRequest[]>;
+  abstract fetchCommits(pr: PullRequest): Promise<string[]>;
+
+  static parseRemote(sshRemote: string): RemoteInfo | undefined {
+    const regexpMatchArray = sshRemote.trim().match(
+      /^ssh:\/\/git@([^:/]+)(?::(\d+))?\/([^/]+)\/(.+?)(?:\.git)?$/,
+    );
+    if (!regexpMatchArray) {
+      return undefined;
+    }
+
+    const host = regexpMatchArray[1];
+    const projectKey = regexpMatchArray[3]?.toUpperCase();
+    const repoSlug = regexpMatchArray[4];
+
+    if (!host || !projectKey || !repoSlug) {
+      return undefined;
+    }
+
+    return {
+      host,
+      projectKey,
+      repoSlug,
+    };
+  }
 }
 
 export interface RemoteInfo {
