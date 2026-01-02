@@ -1,25 +1,31 @@
-import { FlatCompat } from '@eslint/eslintrc';
+import eslint from '@eslint/js';
+import tseslint from 'typescript-eslint';
+import eslintConfigPrettier from 'eslint-config-prettier';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
 const filename = fileURLToPath(import.meta.url);
 const dirname = path.dirname(filename);
 
-const compat = new FlatCompat({
-  baseDirectory: dirname,
-});
-
 export default [
-  // Non-React projects
-  ...compat.extends('airbnb-base'),
-  ...compat.extends('airbnb-typescript/base'),
-  // Configure TypeScript parser
+  eslint.configs.recommended,
+  ...tseslint.configs.recommended,
   {
     languageOptions: {
       parserOptions: {
         project: './tsconfig.json',
         tsconfigRootDir: dirname,
       },
+    },
+  },
+  eslintConfigPrettier,
+  {
+    rules: {
+      '@typescript-eslint/no-explicit-any': 'warn',
+      '@typescript-eslint/no-unused-vars': ['error', { 
+        argsIgnorePattern: '^_',
+        varsIgnorePattern: '^_' 
+      }],
     },
   },
 ];
