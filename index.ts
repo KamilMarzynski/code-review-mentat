@@ -5,6 +5,7 @@ import GitOperations from './git';
 import startReview, { type ReviewInput } from './graph';
 import ContextCache from './cache';
 import { theme, ui } from './ui';
+import { exit } from 'process';
 
 function printMentatHeader() {
   console.log('');
@@ -35,9 +36,7 @@ async function runReview(mrData: ReviewInput) {
       );
     } else {
       clack.log.warn(
-        `${theme.warning('⚡ New computations detected in the pull request')}\n${
-          theme.muted(`   Previous: ${meta?.gatheredFromCommit?.substring(0, 8)}`)}\n${
-          theme.muted(`   Current:  ${mrData.sourceHash.substring(0, 8)}`)}`,
+        `${theme.warning('⚡ New computations detected in the pull request')}\n${theme.muted(`   Previous: ${meta?.gatheredFromCommit?.substring(0, 8)}`)}\n${theme.muted(`   Current:  ${mrData.sourceHash.substring(0, 8)}`)}`,
       );
 
       const choice = await clack.select({
@@ -86,23 +85,13 @@ async function runReview(mrData: ReviewInput) {
     gatherContext = Boolean(shouldGather);
   }
 
-  // Run the review with themed spinner
-  const s = ui.spinner();
-  s.start(theme.accent('Mentat is computing...'));
+  const result = await startReview({
+    ...mrData,
+    gatherContext,
+    refreshCache,
+  });
 
-  try {
-    const result = await startReview({
-      ...mrData,
-      gatherContext,
-      refreshCache,
-    });
-
-    s.stop(theme.success('✓ Computation complete'));
-    return result;
-  } catch (error) {
-    s.stop(theme.error('✗ Computation failed'));
-    throw error;
-  }
+  return result;
 }
 
 const main = async () => {
@@ -223,11 +212,33 @@ const main = async () => {
     console.log(''); // Spacing
 
     // Display results
-    clack.note(
-      theme.primary('Deep Context:\n')
-      + theme.muted(res.context || 'No context gathered'),
-      theme.accent('🧠 Mentat Analysis'),
-    );
+    console.log('');
+    console.log(theme.primary('━━━ 🧠 Deep Context ━━━'));
+    console.log('');
+
+    if (res.context && res.context !== 'No additional context found.' && res.context !== 'Context gathering skipped.') {
+      // Split into paragraphs and format nicely
+      const contextLines = res.context.split('\n');
+      for (const line of contextLines) {
+        if (line.trim().startsWith('#')) {
+          // Headers in gold
+          console.log(theme.primary(line));
+        } else if (line.trim().startsWith('**')) {
+          // Bold text in secondary color
+          console.log(theme.secondary(line));
+        } else if (line.trim().length > 0) {
+          // Regular text muted
+          console.log(theme.muted(line));
+        } else {
+          // Preserve empty lines
+          console.log('');
+        }
+      }
+    } else {
+      console.log(theme.muted('  No additional context gathered.'));
+    }
+
+    console.log('');
 
     if (res.comments && res.comments.length > 0) {
       clack.log.warn(theme.warning(`⚠ Found ${res.comments.length} observation(s):`));
@@ -266,6 +277,7 @@ const main = async () => {
       s.start(theme.muted(`Restoring original state (${currentBranch})...`));
       await git.checkout(currentBranch);
       s.stop(theme.success('✓ Repository state restored'));
+      exit();
     } catch (cleanupError) {
       clack.log.error(
         theme.error('⚠ Failed to restore branch state\n')

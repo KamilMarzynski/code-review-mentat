@@ -34,7 +34,7 @@ type TextBlock = {
   text: string;
 };
 
-const npxCmd = process.platform === 'win32' ? 'npx.cmd' : 'npx';
+// const npxCmd = process.platform === 'win32' ? 'npx.cmd' : 'npx';
 
 const { PATH_TO_CLAUDE } = process.env;
 if (!PATH_TO_CLAUDE) {
@@ -51,19 +51,18 @@ type ReviewComment = {
   rationale?: string;
 };
 
+const npxCmd = process.platform === 'win32' ? 'npx.cmd' : 'npx';
+
 const client = new MultiServerMCPClient({
   useStandardContentBlocks: true,
   mcpServers: {
     atlassian: {
       transport: 'stdio',
-      command: npxCmd,
-      args: ['-y', 'mcp-remote', 'https://mcp.atlassian.com/v1/sse'],
+      command: process.platform === 'win32' ? 'cmd' : 'sh',
+      args: process.platform === 'win32' 
+        ? ['/c', `${npxCmd} -y mcp-remote https://mcp.atlassian.com/v1/sse 2>nul`]
+        : ['-c', `${npxCmd} -y mcp-remote https://mcp.atlassian.com/v1/sse 2>/dev/null`],
       restart: { enabled: true, maxAttempts: 3, delayMs: 1000 },
-      // ✅ Suppress MCP server logs
-      env: {
-        ...process.env,
-        MCP_REMOTE_LOG_LEVEL: 'error', // Only show errors
-      },
     },
   },
 });
@@ -132,7 +131,6 @@ async function contextSearchCall(state: z.infer<typeof reviewState>) {
     }
   }
 
-  // Fetch new context
   ui.section('Deep Context Gathering');
 
   const message = new HumanMessage(`Please analyze the following pull request details to gather relevant context for a code review.
@@ -141,108 +139,83 @@ Description: ${state.description ?? 'No description provided.'}
 Commits: ${state.commits.join('\n')}
 Edited Files: ${state.editedFiles.join(', ')}`);
 
-  ui.step('Analyzing pull request metadata');
-
-  // ✅ Create a dynamic spinner
   const spinner = ui.spinner();
-  spinner.start(theme.accent('Mentat awakening...'));
+  spinner.start(theme.accent('Mentat analyzing pull request metadata...'));
+
+  const getToolMessage = (toolName: string, arg?: string): string => {
+    const messages: Record<string, string> = {
+      search: `🔍 Searching Jira${arg ? `: "${arg}"` : ''}`,
+      getIssue: `📋 Fetching issue${arg ? ` ${arg}` : ''}`,
+      getJiraIssue: `📋 Fetching issue${arg ? ` ${arg}` : ''}`,
+      searchConfluencePages: `📚 Searching Confluence${arg ? `: "${arg}"` : ''}`,
+      getConfluencePage: `📄 Reading page${arg ? ` ${arg}` : ''}`,
+      fetch: `📡 Fetching resource${arg ? `: ${arg}` : ''}`,
+      getAccessibleAtlassianResources: `🌐 Listing accessible resources${arg ? `: ${arg}` : ''}`,
+    };
+    return messages[toolName] || `⚡ ${toolName}${arg ? `: ${arg}` : ''}`;
+  };
 
   try {
-    const contextResponse = await agent.stream({
-      messages: [...state.messages, message],
+    let toolCallCount = 0;
+    const allMessages: BaseMessage[] = [...state.messages, message];
+
+    const stream = await agent.stream({
+      messages: allMessages,
     });
 
-    let toolCallCount = 0;
-
-    // ✅ Helper to get friendly tool names
-    const getToolMessage = (toolName: string, arg?: string): string => {
-      const messages: Record<string, string> = {
-        'search': `🔍 Searching Jira${arg ? `: "${arg}"` : ''}`,
-        'getIssue': `📋 Fetching Jira issue${arg ? ` ${arg}` : ''}`,
-        'getPage': `📄 Reading Confluence page${arg ? ` ${arg}` : ''}`,
-        'searchPages': `📚 Searching Confluence${arg ? `: "${arg}"` : ''}`,
-        'getComments': '💬 Reading comments',
-        'listProjects': '📊 Listing projects',
-      };
-      return messages[toolName] || `⚡ Calling ${toolName}${arg ? `: ${arg}` : ''}`;
-    };
-
-    for await (const chunk of contextResponse) {
+    for await (const chunk of stream) {
+      // Agent stream returns { messages: [...] } chunks
       if (chunk.messages && Array.isArray(chunk.messages)) {
-        const lastMessage = chunk.messages[chunk.messages.length - 1];
-
-        // Log tool calls
-        if (lastMessage?.additional_kwargs?.tool_calls && Array.isArray(lastMessage.additional_kwargs.tool_calls)) {
-          const toolCalls = lastMessage.additional_kwargs.tool_calls as ToolCall[];
-          
-          for (const toolCall of toolCalls) {
-            toolCallCount++;
-            const toolName = toolCall.function?.name || 'unknown';
-            console.debug(`Tool called: ${toolName}`);
-            const args = toolCall.function?.arguments;
-            
-            let argSummary = '';
-            try {
-              const parsed = JSON.parse(args || '{}');
-              argSummary = parsed.query || parsed.issue_key || parsed.page_id || '';
-            } catch {
-              // Ignore parse errors
-            }
-
-            // ✅ Update spinner with dynamic message
-            spinner.message(theme.accent(getToolMessage(toolName, argSummary)));
-
-            ui.toolCall(toolName, argSummary);
-          }
-        }
-
-        // Log tool results
-        if (lastMessage?.content) {
-          const content = Array.isArray(lastMessage.content) 
-            ? lastMessage.content 
-            : [lastMessage.content];
-          
-          for (const item of content) {
-            if (typeof item === 'object' && item !== null && 'type' in item) {
-              const block = item as ToolResultBlock;
-              if (block.type === 'tool_result') {
-                const resultText = typeof block.content === 'string' 
-                  ? block.content 
-                  : JSON.stringify(block.content);
+        for (const msg of chunk.messages) {
+          // Check for AI messages with tool calls
+          if (msg._getType && msg._getType() === 'ai') {
+            if (msg.tool_calls && Array.isArray(msg.tool_calls)) {
+              for (const toolCall of msg.tool_calls) {
+                toolCallCount++;
+                const toolName = toolCall.name || 'unknown';
+                const args = toolCall.args || {};
                 
-                const summary = resultText.substring(0, 60) + (resultText.length > 60 ? '...' : '');
-                ui.toolResult(summary);
+                const argSummary = args.query || args.issueKey || args.issue_key || 
+                                  args.pageId || args.page_id || args.id || '';
 
-                // ✅ Update spinner after tool completes
-                if (toolCallCount > 0) {
-                  spinner.message(theme.accent(`Processing results (${toolCallCount} call${toolCallCount > 1 ? 's' : ''} made)`));
-                }
+                const displayMessage = getToolMessage(toolName, argSummary);
+                spinner.message(theme.accent(displayMessage));
+                ui.step(displayMessage);
               }
             }
           }
+
+          // Check for tool results
+          if (msg._getType && msg._getType() === 'tool') {
+            // const content = typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content);
+            // const summary = content.substring(0, 80).replace(/\n/g, ' ');
+            // ui.toolResult(summary + (content.length > 80 ? '...' : ''));
+            
+            spinner.message(theme.accent(`Processing (${toolCallCount} call${toolCallCount !== 1 ? 's' : ''})`));
+          }
+
+          allMessages.push(msg);
         }
       }
     }
 
-    // ✅ Stop spinner before final processing
-    spinner.message(theme.accent('Synthesizing context...'));
-
-    // Get final response
-    const finalResponse = await agent.invoke({
-      messages: [...state.messages, message],
-    });
-
-    const contextMessage = finalResponse.messages[finalResponse.messages.length - 1];
-    let context = contextMessage?.text || '';
+    // Get final context from last message
+    const lastMessage = allMessages[allMessages.length - 1];
+    let context = '';
+    
+    if (lastMessage && 'content' in lastMessage) {
+      context = typeof lastMessage.content === 'string' 
+        ? lastMessage.content 
+        : JSON.stringify(lastMessage.content);
+    }
 
     if (!context || context.trim().length === 0) {
       context = 'No additional context found.';
     }
 
     spinner.stop(theme.success(`✓ Context gathered using ${toolCallCount} tool call(s)`));
-    ui.sectionComplete(`Deep context synthesis complete`);
+    ui.sectionComplete('Deep context synthesis complete');
 
-    // Cache the result
     cache.set({
       sourceBranch: state.sourceBranch,
       targetBranch: state.targetBranch,
@@ -252,7 +225,7 @@ Edited Files: ${state.editedFiles.join(', ')}`);
     return {
       ...state,
       context,
-      messages: [...state.messages, message, contextMessage],
+      messages: allMessages,
     };
 
   } catch (error) {
