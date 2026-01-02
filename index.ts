@@ -1,21 +1,10 @@
 import * as clack from '@clack/prompts';
-import chalk from 'chalk';
 import type { PullRequest } from './providers/types';
 import BitbucketServerProvider from './providers/bitbucket';
 import GitOperations from './git';
 import startReview, { type ReviewInput } from './graph';
 import ContextCache from './cache';
-
-// Dune/Mentat themed colors
-const theme = {
-  primary: chalk.hex('#D4AF37'), // Gold
-  secondary: chalk.hex('#8B7355'), // Sand
-  accent: chalk.hex('#4A90E2'), // Spice blue
-  success: chalk.hex('#2ECC71'), // Green
-  warning: chalk.hex('#F39C12'), // Orange
-  error: chalk.hex('#E74C3C'), // Red
-  muted: chalk.gray,
-};
+import { theme, ui } from './ui';
 
 function printMentatHeader() {
   console.log('');
@@ -98,7 +87,7 @@ async function runReview(mrData: ReviewInput) {
   }
 
   // Run the review with themed spinner
-  const s = clack.spinner();
+  const s = ui.spinner();
   s.start(theme.accent('Mentat is computing...'));
 
   try {
@@ -126,7 +115,7 @@ const main = async () => {
 
   try {
     // Step 1: Select remote
-    const s1 = clack.spinner();
+    const s1 = ui.spinner();
     s1.start(theme.muted('Scanning git remotes...'));
 
     const allRemotes = await git.getRemotes();
@@ -147,7 +136,7 @@ const main = async () => {
     }
 
     // Step 2: Fetch PRs
-    const s2 = clack.spinner();
+    const s2 = ui.spinner();
     s2.start(theme.muted('Querying pull requests from remote...'));
 
     const provider = new BitbucketServerProvider(selectedRemote.toString());
@@ -182,7 +171,7 @@ const main = async () => {
     clack.log.step(theme.muted(`Target: ${selectedPr.target.name} (${selectedPr.target.commitHash.substring(0, 8)})`));
 
     // Step 4: Prepare repository
-    const s3 = clack.spinner();
+    const s3 = ui.spinner();
     s3.start(theme.muted('Synchronizing repository state...'));
 
     await git.pull(selectedRemote.toString());
@@ -192,7 +181,7 @@ const main = async () => {
     s3.stop(theme.success('✓ Repository prepared'));
 
     // Step 5: Analyze changes
-    const s4 = clack.spinner();
+    const s4 = ui.spinner();
     s4.start(theme.muted('Computing diff matrix...'));
 
     const fullDiff = await git.getDiff(selectedPr.target.commitHash, selectedPr.source.commitHash);
@@ -210,7 +199,7 @@ const main = async () => {
     );
 
     // Step 6: Fetch commit history
-    const s5 = clack.spinner();
+    const s5 = ui.spinner();
     s5.start(theme.muted('Retrieving commit chronology...'));
 
     const commitMessages = await provider.fetchCommits(selectedPr);
@@ -273,7 +262,7 @@ const main = async () => {
   } finally {
     // Always restore branch
     try {
-      const s = clack.spinner();
+      const s = ui.spinner();
       s.start(theme.muted(`Restoring original state (${currentBranch})...`));
       await git.checkout(currentBranch);
       s.stop(theme.success('✓ Repository state restored'));
