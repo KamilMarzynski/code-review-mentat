@@ -81,8 +81,6 @@ const reviewState = z.object({
   ),
 });
 
-const contextCache = new ContextCache();
-
 type ReviewState = z.infer<typeof reviewState>;
 
 async function contextSearchCall(state: z.infer<typeof reviewState>) {
@@ -122,11 +120,14 @@ async function contextSearchCall(state: z.infer<typeof reviewState>) {
   // let context = contextMessage?.text;
   let context = 'Mocked context about Jira tickets and Confluence pages relevant to the pull request.';
   console.log('Context search completed. Context found:', context);
+
   if (!context || context.trim().length === 0) {
     context = 'No additional context found.';
   }
 
-  contextCache.set({
+  console.log('✓ Caching gathered context');
+
+  cache.set({
     sourceBranch: state.sourceBranch,
     targetBranch: state.targetBranch,
     currentCommit: state.sourceHash,
@@ -304,6 +305,8 @@ const startReview = async (input: ReviewInput): Promise<ReviewOutput> => {
     refreshCache: refreshCache ?? false,
     sourceBranch: sourceName,
     targetBranch: targetName,
+    sourceHash: input.sourceHash,
+    targetHash: input.targetHash,
   });
 
   return {
