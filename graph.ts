@@ -8,6 +8,7 @@ import {
 import * as z from 'zod';
 import { MultiServerMCPClient } from '@langchain/mcp-adapters';
 import { query } from '@anthropic-ai/claude-agent-sdk';
+import ContextCache from './cache';
 
 const npxCmd = process.platform === 'win32' ? 'npx.cmd' : 'npx';
 
@@ -64,6 +65,12 @@ const reviewState = z.object({
   description: z.string().optional(),
   title: z.string(),
   editedFiles: z.array(z.string()),
+  sourceBranch: z.string(),
+  sourceHash: z.string(),
+  targetBranch: z.string(),
+  targetHash: z.string(),
+  gatherContext: z.boolean().default(true),
+  refreshCache: z.boolean().default(false),
   messages: z
     .array(z.custom<BaseMessage>())
     .register(registry, MessagesZodMeta),
@@ -74,138 +81,187 @@ const reviewState = z.object({
   ),
 });
 
+const contextCache = new ContextCache();
+
 type ReviewState = z.infer<typeof reviewState>;
 
 async function contextSearchCall(state: z.infer<typeof reviewState>) {
-  console.log('Invoking agent');
+  const cache = new ContextCache();
 
-  const message = new HumanMessage(`Please analyze the following pull request details to gather relevant context for a code review.
-  Pull Request Title: ${state.title}
-  Description: ${state.description ?? 'No description provided.'}
-  Commits: ${state.commits.join('\n')}
-  Edited Files: ${state.editedFiles.join(', ')}`);
+  if (!state.gatherContext) {
+    console.log('✗ Skipping context gathering as per configuration.');
+    return { ...state, context: 'Context gathering skipped.' };
+  }
 
-  const contextResponse = await agent.invoke({
-    messages: [...state.messages, message],
-  });
+  if (!state.refreshCache) {
+    const cached = cache.get({
+      sourceBranch: state.sourceBranch,
+      targetBranch: state.targetBranch,
+    });
 
-  const contextMessage = contextResponse.messages[contextResponse.messages.length - 1];
+    if (cached) {
+      console.log('✓ Using cached context');
+      return { ...state, context: cached };
+    }
+  }
 
+  // Fetch new context
+  console.log('⟳ Gathering context...');
+  // const message = new HumanMessage(`Please analyze the following pull request details to gather relevant context for a code review.
+  // Pull Request Title: ${state.title}
+  // Description: ${state.description ?? 'No description provided.'}
+  // Commits: ${state.commits.join('\n')}
+  // Edited Files: ${state.editedFiles.join(', ')}`);
+  //
+  // const contextResponse = await agent.invoke({
+  //   messages: [...state.messages, message],
+  // });
+  //
+  // const contextMessage = contextResponse.messages[contextResponse.messages.length - 1];
+
+  // let context = contextMessage?.text;
+  let context = 'Mocked context about Jira tickets and Confluence pages relevant to the pull request.';
+  console.log('Context search completed. Context found:', context);
+  if (!context || context.trim().length === 0) {
+    context = 'No additional context found.';
+  }
+
+  contextCache.set({
+    sourceBranch: state.sourceBranch,
+    targetBranch: state.targetBranch,
+    currentCommit: state.sourceHash,
+  }, context);
+
+  // return {
+  //   ...state,
+  //   context,
+  //   messages: [...state.messages, message, contextMessage],
+  // };
   return {
     ...state,
-    context: contextMessage?.text,
-    messages: [...state.messages, message, contextMessage],
+    context,
   };
 }
 
 async function reviewCall(state: z.infer<typeof reviewState>) {
-  const prompt = [
-    'You are performing a code review for a pull request.',
-    '',
-    '## Inputs',
-    `Edited files (${state.editedFiles.length}):`,
-    ...state.editedFiles.map((f) => `- ${f}`),
-    '',
-    'Commits:',
-    ...state.commits.map((c) => `- ${c}`),
-    '',
-    'Deep context (Jira/Confluence):',
-    JSON.stringify(state.context, null, 2),
-    '',
-    'PR diff:',
-    state.diff,
-    '',
-    '## Instructions',
-    '1) Prevent production issues: correctness bugs, security vulnerabilities, data loss, breaking changes.',
-    '2) Ensure the change matches the requirements implied by Jira/Confluence context.',
-    '3) Identify performance regressions or scalability risks introduced by the diff.',
-    '4) Improve maintainability only when it reduces future risk (no cosmetic refactors).',
-  ].join('\n');
-
-  const schema = {
-    type: 'object',
-    additionalProperties: false,
-    properties: {
-      comments: {
-        type: 'array',
-        items: {
-          type: 'object',
-          additionalProperties: false,
-          properties: {
-            file: { type: 'string' },
-            line: { type: 'number' },
-            startLine: { type: 'number' },
-            endLine: { type: 'number' },
-            severity: { type: 'string', enum: ['nit', 'suggestion', 'issue', 'risk'] },
-            message: { type: 'string' },
-            rationale: { type: 'string' },
-          },
-          required: ['file', 'message'],
-        },
-      },
-    },
-    required: ['comments'],
-  };
-
-  // 3) Run Claude Code via the Agent SDK in "review-only" mode
-  const q = query({
-    prompt,
-    options: {
-      pathToClaudeCodeExecutable: PATH_TO_CLAUDE,
-      cwd: process.cwd(),
-      settingSources: ['project'],
-      systemPrompt: {
-        type: 'preset',
-        preset: 'claude_code',
-        append: [
-          'You are in READ-ONLY review mode.',
-          'Never use Edit or Write tools.',
-          'Prefer Grep/Glob/Read for codebase discovery.',
-        ].join('\n'),
-      },
-      outputFormat: { type: 'json_schema', schema },
-
-      // Safety: allow only read/search tools.
-      allowedTools: ['Read', 'Grep', 'Glob'],
-      disallowedTools: ['Edit', 'Write'],
-      executable: 'node',
-      permissionMode: 'default',
-      // If you later allow Bash, use canUseTool to whitelist safe commands. [page:1][page:2]
-      canUseTool: async (toolName, input) => {
-        // Hard deny edits even if something in settings enables them.
-        if (toolName === 'Edit' || toolName === 'Write') {
-          return { behavior: 'deny', message: 'Review node is read-only.' };
-        }
-        return { behavior: 'allow', updatedInput: input };
-      },
-    },
-  });
-
-  let finalResult: any | null = null;
-
-  // eslint-disable-next-line no-restricted-syntax
-  for await (const msg of q) {
-    if (msg.type === 'user' || msg.type === 'assistant') {
-      console.log(JSON.stringify(msg.message.content, null, 2));
-    }
-    if (msg.type === 'result') {
-      finalResult = msg;
-    }
-  }
-
-  if (!finalResult || finalResult.subtype !== 'success') {
-    throw new Error(`Claude Code review failed: ${finalResult?.subtype ?? 'unknown'}`);
-  }
-
-  const { result } = finalResult;
-  const structured = finalResult.structured_output as { comments: ReviewComment[] } | undefined;
-  const comments = structured?.comments ?? [];
-
   return {
     ...state,
-    comments,
-    result,
+    comments: [{
+      file: 'src/example.ts',
+      line: 42,
+      severity: 'issue',
+      message: 'Potential null pointer dereference here.',
+      rationale: 'The variable "user" is not checked for null before accessing its properties.',
+    }],
+    result: 'Code review functionality is currently disabled in this demo.',
   };
+  // const prompt = [
+  //   'You are performing a code review for a pull request.',
+  //   '',
+  //   '## Inputs',
+  //   `Edited files (${state.editedFiles.length}):`,
+  //   ...state.editedFiles.map((f) => `- ${f}`),
+  //   '',
+  //   'Commits:',
+  //   ...state.commits.map((c) => `- ${c}`),
+  //   '',
+  //   'Deep context (Jira/Confluence):',
+  //   JSON.stringify(state.context, null, 2),
+  //   '',
+  //   'PR diff:',
+  //   state.diff,
+  //   '',
+  //   '## Instructions',
+  //   '1) Prevent production issues: correctness bugs, security vulnerabilities, data loss, breaking changes.',
+  //   '2) Ensure the change matches the requirements implied by Jira/Confluence context.',
+  //   '3) Identify performance regressions or scalability risks introduced by the diff.',
+  //   '4) Improve maintainability only when it reduces future risk (no cosmetic refactors).',
+  // ].join('\n');
+  //
+  // const schema = {
+  //   type: 'object',
+  //   additionalProperties: false,
+  //   properties: {
+  //     comments: {
+  //       type: 'array',
+  //       items: {
+  //         type: 'object',
+  //         additionalProperties: false,
+  //         properties: {
+  //           file: { type: 'string' },
+  //           line: { type: 'number' },
+  //           startLine: { type: 'number' },
+  //           endLine: { type: 'number' },
+  //           severity: { type: 'string', enum: ['nit', 'suggestion', 'issue', 'risk'] },
+  //           message: { type: 'string' },
+  //           rationale: { type: 'string' },
+  //         },
+  //         required: ['file', 'message'],
+  //       },
+  //     },
+  //   },
+  //   required: ['comments'],
+  // };
+  //
+  // // 3) Run Claude Code via the Agent SDK in "review-only" mode
+  // const q = query({
+  //   prompt,
+  //   options: {
+  //     pathToClaudeCodeExecutable: PATH_TO_CLAUDE,
+  //     cwd: process.cwd(),
+  //     settingSources: ['project'],
+  //     systemPrompt: {
+  //       type: 'preset',
+  //       preset: 'claude_code',
+  //       append: [
+  //         'You are in READ-ONLY review mode.',
+  //         'Never use Edit or Write tools.',
+  //         'Prefer Grep/Glob/Read for codebase discovery.',
+  //       ].join('\n'),
+  //     },
+  //     outputFormat: { type: 'json_schema', schema },
+  //
+  //     // Safety: allow only read/search tools.
+  //     allowedTools: ['Read', 'Grep', 'Glob'],
+  //     disallowedTools: ['Edit', 'Write'],
+  //     executable: 'node',
+  //     permissionMode: 'default',
+  //     // If you later allow Bash, use canUseTool to whitelist safe commands. [page:1][page:2]
+  //     canUseTool: async (toolName, input) => {
+  //       // Hard deny edits even if something in settings enables them.
+  //       if (toolName === 'Edit' || toolName === 'Write') {
+  //         return { behavior: 'deny', message: 'Review node is read-only.' };
+  //       }
+  //       return { behavior: 'allow', updatedInput: input };
+  //     },
+  //   },
+  // });
+  //
+  // let finalResult: any | null = null;
+  //
+  // // eslint-disable-next-line no-restricted-syntax
+  // for await (const msg of q) {
+  //   if (msg.type === 'user' || msg.type === 'assistant') {
+  //     console.log(JSON.stringify(msg.message.content, null, 2));
+  //   }
+  //   if (msg.type === 'result') {
+  //     finalResult = msg;
+  //   }
+  // }
+  //
+  // if (!finalResult || finalResult.subtype !== 'success') {
+  //   throw new Error(`Claude Code review failed: ${finalResult?.subtype ?? 'unknown'}`);
+  // }
+  //
+  // const { result } = finalResult;
+  // const structured = finalResult.structured_output as { comments: ReviewComment[] } | undefined;
+  // const comments = structured?.comments ?? [];
+  //
+  // return {
+  //   ...state,
+  //   comments,
+  //   result,
+  // };
 }
 
 const graph = new StateGraph(reviewState)
@@ -215,7 +271,7 @@ const graph = new StateGraph(reviewState)
   .addEdge('contextSearchCall', 'reviewCall')
   .compile();
 
-type ReviewInput = {
+export type ReviewInput = {
   title: string,
   diff: string,
   commits: string[],
@@ -224,22 +280,30 @@ type ReviewInput = {
   sourceName: string,
   targetHash: string,
   targetName: string,
+  gatherContext?: boolean,
+  refreshCache?: boolean,
   description: string,
-  // TODO: allow passing additional context by user
-  userProvidedContext?: string,
-  // TODO: implement caching of context to avoid repeated searches
-  cachedContext?: string,
 };
 
-type ReviewOutput = Required<Omit<ReviewState, 'commits' | 'diff' | 'editedFiles' | 'title' | 'description' | 'messages'>>;
+type ReviewOutput = Required<Omit<ReviewState, 'sourceHash' | 'targetHash' | 'gatherContext' | 'refreshCache' | 'commits' | 'diff' | 'editedFiles' | 'title' | 'description' | 'messages' | 'sourceBranch' | 'targetBranch'>>;
 
 const startReview = async (input: ReviewInput): Promise<ReviewOutput> => {
   const {
-    title, commits, diff, editedFiles, description,
+    title,
+    commits, diff, editedFiles, description, sourceName, targetName, gatherContext, refreshCache,
   } = input;
 
   const response = await graph.invoke({
-    commits, title, description, diff, editedFiles, messages: [],
+    commits,
+    title,
+    description,
+    diff,
+    editedFiles,
+    messages: [],
+    gatherContext: gatherContext ?? true,
+    refreshCache: refreshCache ?? false,
+    sourceBranch: sourceName,
+    targetBranch: targetName,
   });
 
   return {
