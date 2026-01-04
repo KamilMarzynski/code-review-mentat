@@ -4,10 +4,10 @@ import { theme } from '../ui/theme';
 
 export function displayHeader(): void {
   console.log('');
-  console.log(theme.primary('╔═══════════════════════════════════════════════════════════════╗'));
-  console.log(theme.primary('║') + theme.accent('          CODE REVIEW MENTAT                         ') + theme.primary('║'));
+  console.log(theme.primary('╔═════════════════════════════════════════════════════╗'));
+  console.log(theme.primary('║') + theme.accent('                CODE REVIEW MENTAT                   ') + theme.primary('║'));
   console.log(theme.primary('║') + theme.muted('    "It is by will alone I set my mind in motion"    ') + theme.primary('║'));
-  console.log(theme.primary('╚═══════════════════════════════════════════════════════════════╝'));
+  console.log(theme.primary('╚═════════════════════════════════════════════════════╝'));
   console.log('');
 }
 
