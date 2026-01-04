@@ -1,6 +1,6 @@
 {
   "name": "code-review-cli",
-  "module": "index.ts",
+  "module": "src/index.ts",
   "devDependencies": {
     "@eslint/js": "^9.39.2",
     "@types/bun": "latest",

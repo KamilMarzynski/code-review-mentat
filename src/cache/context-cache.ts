@@ -83,7 +83,7 @@ export default class ContextCache {
    * Generate stable identifier for this repo
    * Priority: git remote URL > absolute path hash
    */
-  // eslint-disable-next-line class-methods-use-this
+   
   private getRepoId(repoPath: string): string {
     try {
       // Try to get git remote URL (most stable across clones/worktrees)
@@ -119,7 +119,7 @@ export default class ContextCache {
    * Generate cache key from MR identity (NOT commit hashes)
    * If MR number exists, use it. Otherwise use branch names.
    */
-  // eslint-disable-next-line class-methods-use-this
+   
   private getCacheKey(input: {
     mrNumber?: string;
     sourceBranch: string;
@@ -252,75 +252,6 @@ export default class ContextCache {
     } catch {
       return null;
     }
-  }
-
-  /**
-   * Save pending comments (incremental update after review)
-   * Throws if cache doesn't exist - run context gathering first
-   */
-  setPendingComments(
-    input: {
-      mrNumber?: string;
-      sourceBranch: string;
-      targetBranch: string;
-    },
-    comments: ReviewComment[],
-  ): void {
-    const key = this.getCacheKey(input);
-    const cachePath = this.getCachePath(key);
-
-    // Read existing cache
-    if (!existsSync(cachePath)) {
-      throw new Error('Cache does not exist. Run context gathering first.');
-    }
-
-    let cached: CachedContext;
-    try {
-      cached = JSON.parse(readFileSync(cachePath, 'utf-8'));
-    } catch (e) {
-      throw new Error(`Failed to read cache: ${e}`);
-    }
-
-    // Update only pendingComments
-    cached.pendingComments = comments;
-    cached.reviewedAt = new Date().toISOString();
-
-    writeFileSync(cachePath, JSON.stringify(cached, null, 2), 'utf-8');
-  }
-
-  /**
-   * Get pending comments from cache
-   * Returns null if no cache or no pending comments
-   */
-  getPendingComments(input: {
-    mrNumber?: string;
-    sourceBranch: string;
-    targetBranch: string;
-  }): ReviewComment[] | null {
-    const key = this.getCacheKey(input);
-    const cachePath = this.getCachePath(key);
-
-    if (!existsSync(cachePath)) {
-      return null;
-    }
-
-    try {
-      const cached: CachedContext = JSON.parse(readFileSync(cachePath, 'utf-8'));
-      return cached.pendingComments ?? null;
-    } catch {
-      return null;
-    }
-  }
-
-  /**
-   * Clear pending comments (after all resolved)
-   */
-  clearPendingComments(input: {
-    mrNumber?: string;
-    sourceBranch: string;
-    targetBranch: string;
-  }): void {
-    this.setPendingComments(input, []);
   }
 
   /**
