@@ -184,7 +184,7 @@ export class CodeReviewer {
     return messages[toolName] || `⚡ ${toolName}${arg ? `: ${arg}` : ''}`;
   }
 
-  private getReviewSchema(): object {
+  private getReviewSchema(): Record<string, unknown> {
     return {
       type: 'object',
       additionalProperties: false,
