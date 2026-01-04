@@ -4,7 +4,7 @@ import { CodeReviewer } from './code-reviewer';
 import { reviewState, type ReviewInput, type ReviewOutput, type ReviewState } from './types';
 
 export class ReviewService {
-  private graph: any;
+  private graph;
 
   constructor(
     private contextGatherer: ContextGatherer,
@@ -15,7 +15,7 @@ export class ReviewService {
 
   private buildGraph() {
     return new StateGraph(reviewState)
-      .addNode('contextSearchCall', (state: ReviewState) => this.contextGatherer.gather(state))
+      .addNode('contextSearchCall', (state: ReviewState) =>  this.contextGatherer.gather(state))
       .addNode('reviewCall', (state: ReviewState) => this.codeReviewer.review(state))
       .addEdge(START, 'contextSearchCall')
       .addEdge('contextSearchCall', 'reviewCall')

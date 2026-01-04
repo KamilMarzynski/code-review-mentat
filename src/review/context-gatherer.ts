@@ -3,10 +3,11 @@ import ContextCache from '../cache/context-cache';
 import { UILogger } from '../ui/logger';
 import { theme } from '../ui/theme';
 import type { ReviewState } from './types';
+import type { ReactAgent } from 'langchain';
 
 export class ContextGatherer {
   constructor(
-    private agent: any,
+    private agent: ReactAgent,
     private cache: ContextCache,
     private ui: UILogger,
   ) {}
