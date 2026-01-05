@@ -65,7 +65,7 @@ Edited Files: ${state.editedFiles.join(', ')}`);
             const msg = currentMessage;
 
             const isToolCallReasoning = Array.isArray(msg.content)
-              && msg.content.map(c  => c.type).includes('text') && msg.content.map(c => c.type).includes('tool_use');
+              && msg.content.map((c: { type: string })  => c.type).includes('text') && msg.content.map((c: { type: string}) => c.type).includes('tool_use');
             // Handle structured content (array of text/tool_use blocks)
             if (isToolCallReasoning) {
               for (const contentBlock of msg.content) {
@@ -120,7 +120,7 @@ Edited Files: ${state.editedFiles.join(', ')}`);
             }
           }
 
-          allMessages.push(...chunk.messages);
+          allMessages.push(currentMessage);
         }
       }
 
@@ -132,8 +132,6 @@ Edited Files: ${state.editedFiles.join(', ')}`);
         context = typeof lastMessage.content === 'string'
           ? lastMessage.content
           : JSON.stringify(lastMessage.content);
-
-        console.log('Final gathered context:', context);
       }
 
       if (!context || context.trim().length === 0) {
