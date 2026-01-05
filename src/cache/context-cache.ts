@@ -9,7 +9,7 @@ import { execSync } from 'child_process';
 /**
  * Cache structure for review context and pending comments
  */
-type CachedContext = {
+export type CachedContext = {
   context: string;
   meta: {
     // MR identity (stable across commits)
