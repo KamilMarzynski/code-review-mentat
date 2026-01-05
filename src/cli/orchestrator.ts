@@ -165,7 +165,7 @@ export class CLIOrchestrator {
 
             case 'context_tool_result':
               // Optionally show "Processing..." between tools
-              // s6.message(theme.accent('Processing results...'));
+              s6.message(theme.secondary('Thinking'));
               break;
 
             case 'context_thinking': {
@@ -200,7 +200,9 @@ export class CLIOrchestrator {
                 event.toolName,
                 event.input
               );
-              s6.message(theme.secondary(displayMessage));
+              const spinnerMessage = displayMessage.split(' ', 1)[0];
+              this.ui.info((displayMessage));
+              s6.message(theme.secondary(spinnerMessage));
               break;
             }
 
@@ -210,11 +212,6 @@ export class CLIOrchestrator {
 
             case 'context_success': {
               // Final state before stopping
-              s6.message(theme.accent('Synthesizing context...'));
-
-              // Small delay for UX (optional)
-              await new Promise(resolve => setTimeout(resolve, 100));
-
               s6.stop(theme.success(`✓ ${event.message}`));
 
               this.ui.sectionComplete('Deep context synthesis complete');

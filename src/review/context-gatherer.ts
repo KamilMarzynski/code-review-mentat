@@ -61,11 +61,12 @@ Edited Files: ${state.editedFiles.join(', ')}`);
         // Agent stream returns { messages: [...] } chunks
         if (chunk.messages && Array.isArray(chunk.messages)) {
           const currentMessage = chunk.messages[chunk.messages.length - 1];
+          const msg = currentMessage;
+
           if (currentMessage && currentMessage._getType && currentMessage._getType() === 'ai') {
-            const msg = currentMessage;
 
             const isToolCallReasoning = Array.isArray(msg.content)
-              && msg.content.map((c: { type: string })  => c.type).includes('text') && msg.content.map((c: { type: string}) => c.type).includes('tool_use');
+              && msg.content.map((c: { type: string }) => c.type).includes('text') && msg.content.map((c: { type: string }) => c.type).includes('tool_use');
             // Handle structured content (array of text/tool_use blocks)
             if (isToolCallReasoning) {
               for (const contentBlock of msg.content) {
@@ -104,22 +105,20 @@ Edited Files: ${state.editedFiles.join(', ')}`);
                 });
               }
             }
-
-
-            if (msg._getType && msg._getType() === 'tool') {
-              writer({
-                type: 'context_tool_result',
-                summary: typeof msg.content === 'string'
-                  ? msg.content
-                  : 'Tool returned non-string content',
-                toolCallCount,
-                metadata: {
-                  timestamp: Date.now(),
-                },
-              });
-            }
           }
 
+          if (msg._getType && msg._getType() === 'tool') {
+            writer({
+              type: 'context_tool_result',
+              summary: typeof msg.content === 'string'
+                ? msg.content
+                : 'Tool returned non-string content',
+              toolCallCount,
+              metadata: {
+                timestamp: Date.now(),
+              },
+            });
+          }
           allMessages.push(currentMessage);
         }
       }
