@@ -46,7 +46,7 @@ const main = async () => {
   const ui = new UILogger();
 
   // Initialize review services
-  const contextGatherer = new ContextGatherer(agent, cache, ui);
+  const contextGatherer = new ContextGatherer(agent);
   const codeReviewer = new CodeReviewer(PATH_TO_CLAUDE, ui);
   const reviewService = new ReviewService(contextGatherer, codeReviewer);
 

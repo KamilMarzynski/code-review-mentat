@@ -28,6 +28,20 @@ export default class GitOperations {
     return this.git.diff([`${fromCommit}...${toCommit}`]);
   }
 
+  async fetch(remote: string, branch?: string): Promise<void> {
+    try {
+      if (branch) {
+        // Fetch specific branch
+        await this.git.fetch(remote, branch);
+      } else {
+        // Fetch all
+        await this.git.fetch(remote);
+      }
+    } catch (error) {
+      throw new Error(`Failed to fetch from ${remote}${branch ? ` (branch: ${branch})` : ''}: ${(error as Error).message}`);
+    }
+  }
+
   async getDiffSummary(fromCommit: string, toCommit: string): Promise<string[]> {
     const summary = await this.git.diffSummary([
       '--name-only',

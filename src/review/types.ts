@@ -33,6 +33,7 @@ export const reviewState = z.object({
   comments: z.array(
     z.custom<ReviewComment>(),
   ),
+  cachedContext: z.string().optional(),
 });
 
 export type ReviewState = z.infer<typeof reviewState>;
@@ -49,47 +50,64 @@ export type ReviewInput = {
   gatherContext?: boolean,
   refreshCache?: boolean,
   description: string,
+  cachedContext?: string,
 };
+
+export type StreamEventMetadata = {
+  timestamp: number;
+}
 
 /**
  * Base event types that can be emitted by any node
  */
-export type StreamEvent<TPrefix extends string = string> = 
-  | {
-      type: `${TPrefix}_start`;
-      message: string;
-    }
-  | {
+export type StreamEvent<TPrefix extends string = string> =
+  (| {
+    type: `${TPrefix}_start`;
+    message: string;
+  }
+    | {
       type: `${TPrefix}_thinking`;
       text: string;
     }
-  | {
+    | {
       type: `${TPrefix}_tool_call`;
       toolName: string;
       input: string;
     }
-  | {
+    | {
+      type: `${TPrefix}_tool_call_reasoning`;
+      message: string;
+    }
+    | {
       type: `${TPrefix}_tool_result`;
       summary: string;
       toolCallCount: number;
     }
-  | {
+    | {
       type: `${TPrefix}_success`;
+      dataSource: 'cache' | 'live';
       message: string;
       metadata?: Record<string, unknown>;
     }
-  | {
+    | {
       type: `${TPrefix}_error`;
       message: string;
       error?: Error;
     }
-  | {
+    | {
       type: `${TPrefix}_skipped`;
       message: string;
     }
-  | {
+    | {
       type: `${TPrefix}_data`;
-      data: unknown;
+      data: {
+        sourceBranch: string;
+        targetBranch: string;
+        currentCommit: string;
+        context: string;
+      };
+    }) & {
+      metadata: StreamEventMetadata;
     };
 
 /**
@@ -130,4 +148,4 @@ export type EventOfType<
 // type ToolCallEvent = EventOfType<ContextEvent, 'context_tool_call'>;
 // type ThinkingEvent = EventOfType<ReviewEvent, 'review_thinking'>;
 
-export type ReviewOutput = Required<Omit<ReviewState, 'sourceHash' | 'targetHash' | 'gatherContext' | 'refreshCache' | 'commits' | 'diff' | 'editedFiles' | 'title' | 'description' | 'messages' | 'sourceBranch' | 'targetBranch'>>;
+export type ReviewOutput = Required<Omit<ReviewState, 'cachedContext' | 'sourceHash' | 'targetHash' | 'gatherContext' | 'refreshCache' | 'commits' | 'diff' | 'editedFiles' | 'title' | 'description' | 'messages' | 'sourceBranch' | 'targetBranch'>>;

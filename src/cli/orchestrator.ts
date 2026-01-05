@@ -16,7 +16,7 @@ export class CLIOrchestrator {
     private reviewService: ReviewService,
     private cache: ContextCache,
     private ui: UILogger,
-  ) {}
+  ) { }
 
   async run(): Promise<void> {
     displayHeader();
@@ -60,11 +60,30 @@ export class CLIOrchestrator {
       const s3 = this.ui.spinner();
       s3.start(theme.muted('Synchronizing repository state...'));
 
-      await this.git.pull(selectedRemote);
-      s3.message(theme.muted('Entering computation state (checking out source)...'));
-      await this.git.checkout(selectedPr.source.commitHash);
+      try {
+        // Fetch the specific branches we need
+        s3.message(theme.muted('Fetching PR branches...'));
 
-      s3.stop(theme.success('✓ Repository prepared'));
+        await this.git.fetch(selectedRemote, selectedPr.source.name);
+        await this.git.fetch(selectedRemote, selectedPr.target.name);
+
+        s3.message(theme.muted('Entering computation state (checking out source)...'));
+
+        // Checkout the source commit
+        await this.git.checkout(selectedPr.source.commitHash);
+
+        s3.stop(theme.success('✓ Repository prepared'));
+
+      } catch (error) {
+        s3.stop(theme.error('✗ Repository synchronization failed'));
+
+        this.ui.error(`Failed to prepare repository: ${(error as Error).message}`);
+
+        // Suggest recovery
+        this.ui.info(`Try running: git fetch ${selectedRemote} ${selectedPr.source.name}`);
+
+        throw error;
+      }
 
       // Step 5: Analyze changes
       const s4 = this.ui.spinner();
@@ -98,14 +117,21 @@ export class CLIOrchestrator {
       const hasCached = this.cache.has(cacheInput);
       const meta = hasCached ? this.cache.getMetadata(cacheInput) : undefined;
 
+      let cachedContext;
+      if (hasCached && meta) {
+        cachedContext = this.cache.get(cacheInput) || undefined;
+      }
+
       const { gatherContext, refreshCache } = await promptForCacheStrategy(
         hasCached,
         meta || undefined,
         selectedPr.source.commitHash,
       );
 
-      // Step 8: Run Mentat analysis
-      const res = await this.reviewService.startReview({
+      const s6 = this.ui.spinner();
+      s6.start(theme.accent('Mentat analyzing pull request metadata'));
+
+      const events = this.reviewService.streamReview({
         commits: commitMessages,
         title: selectedPr.title,
         description: selectedPr.description || '',
@@ -117,13 +143,112 @@ export class CLIOrchestrator {
         diff: fullDiff,
         gatherContext,
         refreshCache,
+        cachedContext
       });
 
-      console.log(''); // Spacing
+      const toolsByType = new Map<string, number>();
+      // const isThinking = false;
+      // const thinkingText = '';
 
-      // Display results
-      displayContext(res.context);
-      displayComments(res.comments);
+      for await (const event of events) {
+        if ('type' in event) {
+          switch (event.type) {
+            case 'context_start':
+              this.ui.section('Deep Context Gathering');
+              s6.message(theme.accent('Starting context gathering...'));
+              break;
+
+            case 'context_skipped':
+              s6.stop(theme.muted('⊘ Context gathering skipped'));
+              this.ui.info(event.message);
+              break;
+
+            case 'context_tool_result':
+              // Optionally show "Processing..." between tools
+              // s6.message(theme.accent('Processing results...'));
+              break;
+
+            case 'context_thinking': {
+              // Accumulate thinking text
+              // if (!isThinking) {
+              //   thinkingText = '';
+              //   isThinking = true;
+              // }
+              //
+              // thinkingText += event.text;
+              //
+              // // Show truncated thinking in spinner (pale/dim color)
+              // const display = thinkingText.length > 70
+              //   ? thinkingText.substring(0, 70) + '...'
+              //   : thinkingText;
+              //
+              // s6.message(theme.dim(`💭 ${display}`));
+              break;
+            }
+
+            case 'context_tool_call': {
+              // Reset thinking state when tool call starts
+              // isThinking = false;
+              // thinkingText = '';
+              //
+              // Track tool usage
+              const count = toolsByType.get(event.toolName) || 0;
+              toolsByType.set(event.toolName, count + 1);
+
+              // Update spinner with the current tool message
+              const displayMessage = this.getContextToolMessage(
+                event.toolName,
+                event.input
+              );
+              s6.message(theme.secondary(displayMessage));
+              break;
+            }
+
+            case 'context_tool_call_reasoning':
+              this.ui.step(event.message);
+              break;
+
+            case 'context_success': {
+              // Final state before stopping
+              s6.message(theme.accent('Synthesizing context...'));
+
+              // Small delay for UX (optional)
+              await new Promise(resolve => setTimeout(resolve, 100));
+
+              s6.stop(theme.success(`✓ ${event.message}`));
+
+              this.ui.sectionComplete('Deep context synthesis complete');
+              break;
+            }
+
+            case 'context_error':
+              s6.stop(theme.error('✗ Context gathering failed'));
+              this.ui.error(event.message);
+              break;
+
+            case 'context_data':
+              this.cache.set({
+                sourceBranch: event.data.sourceBranch,
+                targetBranch: event.data.targetBranch,
+                currentCommit: event.data.currentCommit,
+              }, event.data.context);
+              break;
+
+              case 'review_start':
+              case 'review_thinking':
+              case 'review_tool_call':
+              case 'review_tool_result':
+              case 'review_success':
+              case 'review_error':
+              case 'review_skipped':
+              case 'review_data':
+          }
+        } else {
+          console.log(''); // Spacing
+          displayContext(event.context);
+          displayComments(event.comments);
+        }
+      }
 
       console.log(''); // Spacing
       clack.outro(
@@ -152,4 +277,18 @@ export class CLIOrchestrator {
       }
     }
   }
+
+  private getContextToolMessage(toolName: string, arg?: string): string {
+    const messages: Record<string, string> = {
+      search: `🔍 Searching Jira${arg ? `: "${arg}"` : ''}`,
+      getIssue: `📋 Fetching issue${arg ? ` ${arg}` : ''}`,
+      getJiraIssue: `📋 Fetching issue${arg ? ` ${arg}` : ''}`,
+      searchConfluencePages: `📚 Searching Confluence${arg ? `: "${arg}"` : ''}`,
+      getConfluencePage: `📄 Reading page${arg ? ` ${arg}` : ''}`,
+      fetch: `📡 Fetching resource${arg ? `: ${arg}` : ''}`,
+      getAccessibleAtlassianResources: `🌐 Listing accessible resources${arg ? `: ${arg}` : ''}`,
+    };
+    return messages[toolName] || `⚡ ${toolName}${arg ? `: ${arg}` : ''}`;
+  }
+
 }

@@ -1,7 +1,7 @@
 import { START, StateGraph, type LangGraphRunnableConfig } from '@langchain/langgraph';
 import { ContextGatherer } from './context-gatherer';
 import { CodeReviewer } from './code-reviewer';
-import { reviewState, type ReviewInput, type ReviewOutput, type ReviewState } from './types';
+import { reviewState, type NodeEvent, type ReviewInput, type ReviewOutput, type ReviewState } from './types';
 
 export class ReviewService {
   private graph;
@@ -15,7 +15,7 @@ export class ReviewService {
 
   private buildGraph() {
     return new StateGraph(reviewState)
-      .addNode('contextSearchCall', (state: ReviewState, config: LangGraphRunnableConfig) =>  this.contextGatherer.gather(state, config))
+      .addNode('contextSearchCall', (state: ReviewState, config: LangGraphRunnableConfig) => this.contextGatherer.gather(state, config))
       .addNode('reviewCall', (state: ReviewState) => this.codeReviewer.review(state))
       .addEdge(START, 'contextSearchCall')
       .addEdge('contextSearchCall', 'reviewCall')
@@ -48,5 +48,34 @@ export class ReviewService {
       context: response.context || '',
       result: response.result || '',
     };
+  }
+
+  async *streamReview(input: ReviewInput): AsyncGenerator<ReviewOutput | NodeEvent> {
+    const {
+      title,
+      commits, diff, editedFiles, description, sourceName, targetName, gatherContext, refreshCache,
+    } = input;
+
+
+    const events = await this.graph.stream({
+      commits,
+      title,
+      description,
+      diff,
+      editedFiles,
+      messages: [],
+      gatherContext: gatherContext ?? true,
+      refreshCache: refreshCache ?? false,
+      sourceBranch: sourceName,
+      targetBranch: targetName,
+      sourceHash: input.sourceHash,
+      targetHash: input.targetHash,
+    }, {
+      streamMode: 'custom'
+    });
+
+    for await (const event of events) {
+      yield event;
+    }
   }
 }

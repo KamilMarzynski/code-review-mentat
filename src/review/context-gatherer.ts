@@ -1,7 +1,4 @@
 import { HumanMessage, type BaseMessage } from '@langchain/core/messages';
-import ContextCache from '../cache/context-cache';
-import { UILogger } from '../ui/logger';
-import { theme } from '../ui/theme';
 import type { ContextEvent, ReviewState } from './types';
 import type { ReactAgent } from 'langchain';
 import type { LangGraphRunnableConfig } from '@langchain/langgraph';
@@ -9,8 +6,6 @@ import type { LangGraphRunnableConfig } from '@langchain/langgraph';
 export class ContextGatherer {
   constructor(
     private agent: ReactAgent,
-    private cache: ContextCache,
-    private ui: UILogger,
   ) { }
 
   async gather(state: ReviewState, config: LangGraphRunnableConfig): Promise<Partial<ReviewState>> {
@@ -20,41 +15,39 @@ export class ContextGatherer {
       writer({
         type: 'context_skipped',
         message: 'Skipping context gathering as per configuration.',
+        metadata: {
+          timestamp: Date.now(),
+        },
       })
-      this.ui.info('Skipping context gathering as per configuration.');
       return { ...state, context: 'Context gathering skipped.' };
     }
 
-    if (!state.refreshCache) {
-      const cached = this.cache.get({
-        sourceBranch: state.sourceBranch,
-        targetBranch: state.targetBranch,
+    if (!state.refreshCache && state.cachedContext) {
+      writer({
+        type: 'context_success',
+        dataSource: 'cache',
+        message: 'Using cached deep context.',
+        metadata: {
+          timestamp: Date.now(),
+        },
       });
 
-      if (cached) {
-        writer({
-          type: 'context_success',
-          message: 'Using cached deep context.',
-        });
-        this.ui.success('Using cached deep context');
-        return { ...state, context: cached };
-      }
+      return { ...state, context: state.cachedContext };
     }
 
     writer({
       type: 'context_start',
       message: 'Gathering deep context from pull request metadata.',
+      metadata: {
+        timestamp: Date.now(),
+      },
     });
-    this.ui.section('Deep Context Gathering');
 
     const message = new HumanMessage(`Please analyze the following pull request details to gather relevant context for a code review.
 Pull Request Title: ${state.title}
 Description: ${state.description ?? 'No description provided.'}
 Commits: ${state.commits.join('\n')}
 Edited Files: ${state.editedFiles.join(', ')}`);
-
-    const spinner = this.ui.spinner();
-    spinner.start(theme.accent('Mentat analyzing pull request metadata'));
 
     try {
       let toolCallCount = 0;
@@ -67,44 +60,52 @@ Edited Files: ${state.editedFiles.join(', ')}`);
       for await (const chunk of stream) {
         // Agent stream returns { messages: [...] } chunks
         if (chunk.messages && Array.isArray(chunk.messages)) {
-          for (const msg of chunk.messages) {
-            // Check for AI messages with tool calls
-            if (msg._getType && msg._getType() === 'ai') {
-              if (msg.content && typeof msg.content === 'string') {
-                const text = msg.content.trim();
+          const currentMessage = chunk.messages[chunk.messages.length - 1];
+          if (currentMessage && currentMessage._getType && currentMessage._getType() === 'ai') {
+            const msg = currentMessage;
 
-                if (text.length > 0) {
-                  // Emit thinking chunks
-                  writer({
-                    type: 'context_thinking',
-                    text, // This is a partial chunk (word/token)
-                  });
-                }
-              }
+            const isToolCallReasoning = Array.isArray(msg.content)
+              && msg.content.map(c  => c.type).includes('text') && msg.content.map(c => c.type).includes('tool_use');
+            // Handle structured content (array of text/tool_use blocks)
+            if (isToolCallReasoning) {
+              for (const contentBlock of msg.content) {
+                if (contentBlock.type === 'text' && contentBlock.text) {
+                  const text = contentBlock.text.trim();
 
-              if (msg.tool_calls && Array.isArray(msg.tool_calls)) {
-                for (const toolCall of msg.tool_calls) {
-                  toolCallCount++;
-                  const toolName = toolCall.name || 'unknown';
-                  const args  = toolCall.args || {};
-
-                  const argSummary = args.query || args.issueKey || args.issue_key
-                    || args.pageId || args.page_id || args.id || '';
-
-                  writer({
-                    type: 'context_tool_call',
-                    toolName,
-                    input: argSummary,
-                  });
-
-                  const displayMessage = this.getToolMessage(toolName, argSummary);
-                  spinner.message(theme.accent(displayMessage));
-                  this.ui.step(displayMessage);
+                  if (text.length > 0) {
+                    writer({
+                      type: 'context_tool_call_reasoning',
+                      message: text,
+                      metadata: {
+                        timestamp: Date.now(),
+                      },
+                    });
+                  }
                 }
               }
             }
 
-            // Check for tool results
+            if (msg.tool_calls && Array.isArray(msg.tool_calls)) {
+              for (const toolCall of msg.tool_calls) {
+                toolCallCount++;
+                const toolName = toolCall.name || 'unknown';
+                const args = toolCall.args || {};
+
+                const argSummary = args.query || args.issueKey || args.issue_key
+                  || args.pageId || args.page_id || args.id || '';
+
+                writer({
+                  type: 'context_tool_call',
+                  toolName,
+                  input: argSummary,
+                  metadata: {
+                    timestamp: Date.now(),
+                  },
+                });
+              }
+            }
+
+
             if (msg._getType && msg._getType() === 'tool') {
               writer({
                 type: 'context_tool_result',
@@ -112,12 +113,14 @@ Edited Files: ${state.editedFiles.join(', ')}`);
                   ? msg.content
                   : 'Tool returned non-string content',
                 toolCallCount,
+                metadata: {
+                  timestamp: Date.now(),
+                },
               });
-              spinner.message(theme.accent(`Processing (${toolCallCount} call${toolCallCount !== 1 ? 's' : ''})`));
             }
-
-            allMessages.push(msg);
           }
+
+          allMessages.push(...chunk.messages);
         }
       }
 
@@ -129,6 +132,8 @@ Edited Files: ${state.editedFiles.join(', ')}`);
         context = typeof lastMessage.content === 'string'
           ? lastMessage.content
           : JSON.stringify(lastMessage.content);
+
+        console.log('Final gathered context:', context);
       }
 
       if (!context || context.trim().length === 0) {
@@ -138,10 +143,11 @@ Edited Files: ${state.editedFiles.join(', ')}`);
       writer({
         type: 'context_success',
         message: `Context gathered using ${toolCallCount} tool call(s).`,
+        dataSource: 'live',
+        metadata: {
+          timestamp: Date.now(),
+        },
       });
-
-      spinner.stop(theme.success(`✓ Context gathered using ${toolCallCount} tool call(s)`));
-      this.ui.sectionComplete('Deep context synthesis complete');
 
       writer({
         type: 'context_data',
@@ -150,14 +156,11 @@ Edited Files: ${state.editedFiles.join(', ')}`);
           targetBranch: state.targetBranch,
           currentCommit: state.sourceHash,
           context
-        }
+        },
+        metadata: {
+          timestamp: Date.now(),
+        },
       });
-
-      this.cache.set({
-        sourceBranch: state.sourceBranch,
-        targetBranch: state.targetBranch,
-        currentCommit: state.sourceHash,
-      }, context);
 
       return {
         ...state,
@@ -168,26 +171,14 @@ Edited Files: ${state.editedFiles.join(', ')}`);
       writer({
         type: 'context_error',
         message: `Context gathering failed: ${(error as Error).message}`,
+        metadata: {
+          timestamp: Date.now(),
+        },
       });
-      spinner.stop(theme.error('✗ Context gathering failed'));
-      this.ui.error(`Context gathering failed: ${(error as Error).message}`);
       return {
         ...state,
         context: 'Context gathering failed.',
       };
     }
-  }
-
-  private getToolMessage(toolName: string, arg?: string): string {
-    const messages: Record<string, string> = {
-      search: `🔍 Searching Jira${arg ? `: "${arg}"` : ''}`,
-      getIssue: `📋 Fetching issue${arg ? ` ${arg}` : ''}`,
-      getJiraIssue: `📋 Fetching issue${arg ? ` ${arg}` : ''}`,
-      searchConfluencePages: `📚 Searching Confluence${arg ? `: "${arg}"` : ''}`,
-      getConfluencePage: `📄 Reading page${arg ? ` ${arg}` : ''}`,
-      fetch: `📡 Fetching resource${arg ? `: ${arg}` : ''}`,
-      getAccessibleAtlassianResources: `🌐 Listing accessible resources${arg ? `: ${arg}` : ''}`,
-    };
-    return messages[toolName] || `⚡ ${toolName}${arg ? `: ${arg}` : ''}`;
   }
 }

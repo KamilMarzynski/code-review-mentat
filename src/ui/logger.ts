@@ -13,11 +13,12 @@ export class UILogger {
   }
 
   /**
-   * Log a reasoning step (like Claude Code)
+   * Log a reasoning step
    */
   step(message: string) {
     stepCounter++;
-    console.log(`${theme.accent(`  ${stepCounter}.`)} ${theme.secondary(message)}`);
+    console.log('');
+    console.log(`${theme.accent(`  ${stepCounter}. ${message}`)}`);
   }
 
   /**
