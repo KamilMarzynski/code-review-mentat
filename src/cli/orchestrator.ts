@@ -318,6 +318,10 @@ export class CLIOrchestrator {
         }
         break;
 
+      case 'review_data': 
+        // TODO: Put comments in cache
+        break;
+
       case 'review_error':
         reviewHasError.value = true;
         reviewSpinner.stop(theme.error('✗ Review failed'));
