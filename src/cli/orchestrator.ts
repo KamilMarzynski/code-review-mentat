@@ -70,7 +70,7 @@ export class CLIOrchestrator {
 
   private async selectRemote(): Promise<string> {
     const s1 = this.ui.spinner();
-    s1.start(theme.muted('Scanning git remotes...'));
+    s1.start(theme.muted('Scanning git remotes'));
 
     const allRemotes = await this.git.getRemotes();
     s1.stop(theme.success(`✓ Found ${allRemotes.length} remote(s)`));
@@ -80,7 +80,7 @@ export class CLIOrchestrator {
 
   private async fetchPullRequests(remote: string): Promise<{ provider: GitProvider; prs: PullRequest[] }> {
     const s2 = this.ui.spinner();
-    s2.start(theme.muted('Querying pull requests from remote...'));
+    s2.start(theme.muted('Querying pull requests from remote'));
 
     const provider = this.createProvider(remote);
     const prs = await provider.fetchPullRequests();
@@ -107,14 +107,14 @@ export class CLIOrchestrator {
 
   private async prepareRepository(remote: string, pr: PullRequest): Promise<void> {
     const s3 = this.ui.spinner();
-    s3.start(theme.muted('Synchronizing repository state...'));
+    s3.start(theme.muted('Synchronizing repository state'));
 
     try {
-      s3.message(theme.muted('Fetching PR branches...'));
+      s3.message(theme.muted('Fetching PR branches'));
       await this.git.fetch(remote, pr.source.name);
       await this.git.fetch(remote, pr.target.name);
 
-      s3.message(theme.muted('Entering computation state (checking out source)...'));
+      s3.message(theme.muted('Entering computation state (checking out source)'));
       await this.git.checkout(pr.source.commitHash);
 
       s3.stop(theme.success('✓ Repository prepared'));
@@ -128,7 +128,7 @@ export class CLIOrchestrator {
 
   private async analyzeChanges(pr: PullRequest): Promise<{ fullDiff: string; editedFiles: string[] }> {
     const s4 = this.ui.spinner();
-    s4.start(theme.muted('Computing diff matrix...'));
+    s4.start(theme.muted('Computing diff matrix'));
 
     const fullDiff = await this.git.getDiff(pr.target.commitHash, pr.source.commitHash);
     const editedFiles = await this.git.getDiffSummary(pr.target.commitHash, pr.source.commitHash);
@@ -146,7 +146,7 @@ export class CLIOrchestrator {
 
   private async fetchCommitHistory(provider: GitProvider, pr: PullRequest): Promise<string[]> {
     const s5 = this.ui.spinner();
-    s5.start(theme.muted('Retrieving commit chronology...'));
+    s5.start(theme.muted('Retrieving commit chronology'));
 
     const commitMessages = await provider.fetchCommits(pr);
     s5.stop(theme.success(`✓ Processed ${commitMessages.length} commit(s)`));
@@ -194,7 +194,7 @@ export class CLIOrchestrator {
       case 'context_start':
         currentPhase.value = Phase.CONTEXT;
         this.ui.section('Deep Context Gathering');
-        contextSpinner.start(theme.accent('Starting context gathering...'));
+        contextSpinner.start(theme.accent('Starting context gathering'));
         break;
 
       case 'context_skipped':
@@ -276,7 +276,7 @@ export class CLIOrchestrator {
         }
         
         this.ui.section('Code Review Analysis');
-        reviewSpinner.start(theme.accent('Initializing Claude Code in read-only mode...'));
+        reviewSpinner.start(theme.accent('Initializing Claude Code in read-only mode'));
         break;
 
       case 'review_thinking': {
