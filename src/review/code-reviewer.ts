@@ -127,7 +127,8 @@ export class CodeReviewer {
                   const toolBlock = typedBlock as ToolUseBlock;
                   toolUseCount++;
                   // lastToolName = toolBlock.name;
-                  console.log('Tool block:', JSON.stringify(toolBlock, null, 2));
+                  // TODO: Debug it and remove
+                  console.debug('Tool block:', JSON.stringify(toolBlock, null, 2));
                   const pathOrPattern = toolBlock.input?.path || toolBlock.input?.pattern || '';
 
                   writer({
@@ -200,6 +201,19 @@ export class CodeReviewer {
         metadata: {
           // commentCount: comments.length,
           // toolCount: toolUseCount,
+          timestamp: Date.now(),
+        },
+      });
+
+      writer({
+        type: 'review_data',
+        data: {
+          sourceBranch: state.sourceBranch,
+          targetBranch: state.targetBranch,
+          currentCommit: state.sourceHash,
+          comments
+        },
+        metadata: {
           timestamp: Date.now(),
         },
       });

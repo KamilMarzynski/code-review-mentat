@@ -60,7 +60,7 @@ export type StreamEventMetadata = {
 /**
  * Base event types that can be emitted by any node
  */
-export type StreamEvent<TPrefix extends string = string> =
+export type StreamEvent<TPrefix extends EventType = EventType> =
   (| {
     type: `${TPrefix}_start`;
     message: string;
@@ -100,25 +100,41 @@ export type StreamEvent<TPrefix extends string = string> =
     }
     | {
       type: `${TPrefix}_data`;
-      data: {
-        sourceBranch: string;
-        targetBranch: string;
-        currentCommit: string;
-        context: string;
-      };
+      data: DataEventData<TPrefix>;
     }) & {
       metadata: StreamEventMetadata;
     };
 
+export enum EventType {
+  CONTEXT = 'context',
+  REVIEW = 'review',
+}
+
+export type DataEventData<T extends EventType> = T extends EventType.CONTEXT
+  ? {
+      sourceBranch: string;
+      targetBranch: string;
+      currentCommit: string;
+      context: string;
+    }
+  : T extends EventType.REVIEW
+    ? {
+        sourceBranch: string;
+        targetBranch: string;
+        currentCommit: string;
+        comments: ReviewComment[];
+      }
+    : never;
+
 /**
  * Context gathering events
  */
-export type ContextEvent = StreamEvent<'context'>;
+export type ContextEvent = StreamEvent<EventType.CONTEXT>;
 
 /**
  * Code review events
  */
-export type ReviewEvent = StreamEvent<'review'>;
+export type ReviewEvent = StreamEvent<EventType.REVIEW>;
 
 /**
  * All possible streaming events
