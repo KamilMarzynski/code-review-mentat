@@ -47,7 +47,7 @@ const main = async () => {
 
   // Initialize review services
   const contextGatherer = new ContextGatherer(agent);
-  const codeReviewer = new CodeReviewer(PATH_TO_CLAUDE, ui);
+  const codeReviewer = new CodeReviewer(PATH_TO_CLAUDE);
   const reviewService = new ReviewService(contextGatherer, codeReviewer);
 
   // Provider factory function

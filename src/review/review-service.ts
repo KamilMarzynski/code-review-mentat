@@ -16,7 +16,7 @@ export class ReviewService {
   private buildGraph() {
     return new StateGraph(reviewState)
       .addNode('contextSearchCall', (state: ReviewState, config: LangGraphRunnableConfig) => this.contextGatherer.gather(state, config))
-      .addNode('reviewCall', (state: ReviewState) => this.codeReviewer.review(state))
+      .addNode('reviewCall', (state: ReviewState, config: LangGraphRunnableConfig) => this.codeReviewer.review(state,config))
       .addEdge(START, 'contextSearchCall')
       .addEdge('contextSearchCall', 'reviewCall')
       .compile();
@@ -53,11 +53,12 @@ export class ReviewService {
   async *streamReview(input: ReviewInput): AsyncGenerator<ReviewOutput | NodeEvent> {
     const {
       title,
-      commits, diff, editedFiles, description, sourceName, targetName, gatherContext, refreshCache,
+      commits, diff, editedFiles, description, sourceName, targetName, gatherContext, refreshCache, cachedContext,
     } = input;
 
 
     const events = await this.graph.stream({
+      cachedContext,
       commits,
       title,
       description,

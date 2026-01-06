@@ -1,7 +1,6 @@
 import { query } from '@anthropic-ai/claude-agent-sdk';
-import { UILogger } from '../ui/logger';
-import { theme } from '../ui/theme';
-import type { ReviewState, ReviewComment } from './types';
+import type { ReviewState, ReviewComment, ReviewEvent } from './types';
+import type { LangGraphRunnableConfig } from '@langchain/langgraph';
 
 type ToolUseBlock = {
   type: 'tool_use';
@@ -20,13 +19,23 @@ type TextBlock = {
 };
 
 export class CodeReviewer {
-  constructor(
-    private claudePath: string,
-    private ui: UILogger,
-  ) {}
+  constructor(private claudePath: string) { }
 
-  async review(state: ReviewState): Promise<Partial<ReviewState>> {
-    this.ui.section('Code Review Analysis');
+  async review(
+    state: ReviewState,
+    config: LangGraphRunnableConfig
+  ): Promise<Partial<ReviewState>> {
+    const writer: (chunk: ReviewEvent) => void = config.writer!; // TODO: Handle undefined writer more gracefully
+
+    writer({
+      type: 'review_start',
+      message: 'Starting code review analysis',
+      metadata: {
+        // fileCount: state.editedFiles.length,
+        // commitCount: state.commits.length,
+        timestamp: Date.now(),
+      },
+    });
 
     const prompt = [
       'You are performing a code review for a pull request.',
@@ -52,11 +61,6 @@ export class CodeReviewer {
     ].join('\n');
 
     const schema = this.getReviewSchema();
-
-    this.ui.step('Initializing Claude Code in read-only mode');
-
-    const spinner = this.ui.spinner();
-    spinner.start(theme.accent('Claude Code awakening...'));
 
     try {
       const q = query({
@@ -90,6 +94,7 @@ export class CodeReviewer {
 
       let finalResult: any | null = null;
       let toolUseCount = 0;
+      // const lastToolName = '';
 
       for await (const msg of q) {
         if (msg.type === 'assistant') {
@@ -100,21 +105,41 @@ export class CodeReviewer {
               if (typeof block === 'object' && block !== null && 'type' in block) {
                 const typedBlock = block as TextBlock | ToolUseBlock;
 
+                // Handle thinking text
                 if (typedBlock.type === 'text' && 'text' in typedBlock) {
                   const text = typedBlock.text.trim();
-                  if (text.length > 0 && text.length < 100) {
-                    this.ui.thinking(text);
-                    spinner.message(theme.dim(text.substring(0, 50) + (text.length > 50 ? '...' : '')));
+                  if (text.length > 0) {
+                    writer({
+                      type: 'review_thinking',
+                      text,
+                      metadata: {
+                        timestamp: Date.now(),
+                      },
+                    });
                   }
                 }
 
+                // Handle tool calls
                 if (typedBlock.type === 'tool_use' && 'name' in typedBlock) {
                   const toolBlock = typedBlock as ToolUseBlock;
                   toolUseCount++;
+                  // lastToolName = toolBlock.name;
+                  console.log('Tool block:', JSON.stringify(toolBlock, null, 2));
                   const pathOrPattern = toolBlock.input?.path || toolBlock.input?.pattern || '';
 
-                  spinner.message(theme.accent(this.getReviewToolMessage(toolBlock.name, pathOrPattern)));
-                  this.ui.toolCall(toolBlock.name, pathOrPattern);
+                  writer({
+                    type: 'review_tool_call',
+                    toolName: toolBlock.name,
+                    input: pathOrPattern,
+                    // input: {
+                    //   summary: pathOrPattern,
+                    //   raw: toolBlock.input || {},
+                    // },
+                    metadata: {
+                      // toolIndex: toolUseCount,
+                      timestamp: Date.now(),
+                    },
+                  });
                 }
               }
             }
@@ -133,10 +158,19 @@ export class CodeReviewer {
                   const resultText = typeof resultBlock.content === 'string'
                     ? resultBlock.content
                     : JSON.stringify(resultBlock.content);
-                  const summary = resultText.substring(0, 60) + (resultText.length > 60 ? '...' : '');
-                  this.ui.toolResult(summary);
 
-                  spinner.message(theme.accent(`Analyzing results (${toolUseCount} action${toolUseCount > 1 ? 's' : ''})`));
+                  writer({
+                    type: 'review_tool_result',
+                    summary: resultText,
+                    toolCallCount: toolUseCount,
+                    // toolName: lastToolName,
+                    // result: resultText,
+                    metadata: {
+                      // currentToolCount: toolUseCount,
+                      // length: resultText.length,
+                      timestamp: Date.now(),
+                    },
+                  });
                 }
               }
             }
@@ -156,8 +190,16 @@ export class CodeReviewer {
       const structured = finalResult.structured_output as { comments: ReviewComment[] } | undefined;
       const comments = structured?.comments ?? [];
 
-      spinner.stop(theme.success(`✓ Review complete: ${comments.length} observation(s)`));
-      this.ui.sectionComplete(`Analysis complete using ${toolUseCount} tool(s)`);
+      writer({
+        type: 'review_success',
+        dataSource: 'live',
+        message: `Review complete: ${comments.length} observation(s)`,
+        metadata: {
+          // commentCount: comments.length,
+          // toolCount: toolUseCount,
+          timestamp: Date.now(),
+        },
+      });
 
       return {
         ...state,
@@ -165,23 +207,25 @@ export class CodeReviewer {
         result,
       };
     } catch (error) {
-      spinner.stop(theme.error('✗ Review failed'));
-      this.ui.error(`Review failed: ${(error as Error).message}`);
+      writer({
+        type: 'review_error',
+        message: `Review failed: ${(error as Error).message}`,
+        error: {
+          name: (error as Error).name,
+          message: (error as Error).message,
+          stack: (error as Error).stack,
+        },
+        metadata: {
+          timestamp: Date.now(),
+        },
+      });
+
       return {
         ...state,
         comments: [],
         result: `Review failed: ${(error as Error).message}`,
       };
     }
-  }
-
-  private getReviewToolMessage(toolName: string, arg?: string): string {
-    const messages: Record<string, string> = {
-      Read: `📖 Reading ${arg || 'file'}`,
-      Grep: `🔍 Searching for pattern${arg ? `: ${arg}` : ''}`,
-      Glob: `📁 Finding files${arg ? `: ${arg}` : ''}`,
-    };
-    return messages[toolName] || `⚡ ${toolName}${arg ? `: ${arg}` : ''}`;
   }
 
   private getReviewSchema(): Record<string, unknown> {

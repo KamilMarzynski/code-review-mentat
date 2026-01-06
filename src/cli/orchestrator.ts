@@ -153,6 +153,7 @@ export class CLIOrchestrator {
       for await (const event of events) {
         if ('type' in event) {
           switch (event.type) {
+            // ====== CONTEXT EVENTS ======
             case 'context_start':
               this.ui.section('Deep Context Gathering');
               s6.message(theme.accent('Starting context gathering...'));
@@ -164,44 +165,23 @@ export class CLIOrchestrator {
               break;
 
             case 'context_tool_result':
-              // Optionally show "Processing..." between tools
               s6.message(theme.secondary('Thinking'));
               break;
 
-            case 'context_thinking': {
-              // Accumulate thinking text
-              // if (!isThinking) {
-              //   thinkingText = '';
-              //   isThinking = true;
-              // }
-              //
-              // thinkingText += event.text;
-              //
-              // // Show truncated thinking in spinner (pale/dim color)
-              // const display = thinkingText.length > 70
-              //   ? thinkingText.substring(0, 70) + '...'
-              //   : thinkingText;
-              //
-              // s6.message(theme.dim(`💭 ${display}`));
+            case 'context_thinking':
+              // Reserved for future token streaming
               break;
-            }
 
             case 'context_tool_call': {
-              // Reset thinking state when tool call starts
-              // isThinking = false;
-              // thinkingText = '';
-              //
-              // Track tool usage
               const count = toolsByType.get(event.toolName) || 0;
               toolsByType.set(event.toolName, count + 1);
 
-              // Update spinner with the current tool message
               const displayMessage = this.getContextToolMessage(
                 event.toolName,
                 event.input
               );
               const spinnerMessage = displayMessage.split(' ', 1)[0];
-              this.ui.info((displayMessage));
+              this.ui.info(displayMessage);
               s6.message(theme.secondary(spinnerMessage));
               break;
             }
@@ -211,9 +191,7 @@ export class CLIOrchestrator {
               break;
 
             case 'context_success': {
-              // Final state before stopping
               s6.stop(theme.success(`✓ ${event.message}`));
-
               this.ui.sectionComplete('Deep context synthesis complete');
               break;
             }
@@ -231,14 +209,52 @@ export class CLIOrchestrator {
               }, event.data.context);
               break;
 
-              case 'review_start':
-              case 'review_thinking':
-              case 'review_tool_call':
-              case 'review_tool_result':
-              case 'review_success':
-              case 'review_error':
-              case 'review_skipped':
-              case 'review_data':
+            // ====== REVIEW EVENTS ======
+            case 'review_start':
+              this.ui.section('Code Review Analysis');
+              s6.start(theme.accent('Initializing Claude Code in read-only mode...'));
+              break;
+
+            case 'review_thinking': {
+              // Only show short, meaningful thoughts
+              if (event.text.length < 100) {
+                const display = event.text.length > 70
+                  ? event.text.substring(0, 70) + '...'
+                  : event.text;
+                s6.message(theme.dim(`💭 ${display}`));
+              }
+              break;
+            }
+
+            case 'review_tool_call': {
+              const count = toolsByType.get(event.toolName) || 0;
+              toolsByType.set(event.toolName, count + 1);
+
+              const displayMessage = this.getReviewToolMessage(
+                event.toolName,
+                event.input
+              );
+              const spinnerMessage = displayMessage.split(' ', 1)[0];
+              this.ui.info(displayMessage);
+              s6.message(theme.secondary(spinnerMessage));
+              break;
+            }
+
+            case 'review_tool_result':
+              s6.message(theme.secondary('Analyzing'));
+              break;
+
+            case 'review_success': {
+              s6.stop(theme.success(`✓ ${event.message}`));
+
+              this.ui.sectionComplete('Analysis complete');
+              break;
+            }
+
+            case 'review_error':
+              s6.stop(theme.error('✗ Review failed'));
+              this.ui.error(event.message);
+              break;
           }
         } else {
           console.log(''); // Spacing
@@ -246,7 +262,6 @@ export class CLIOrchestrator {
           displayComments(event.comments);
         }
       }
-
       console.log(''); // Spacing
       clack.outro(
         theme.primary('⚡ Mentat computation complete. ')
@@ -288,4 +303,30 @@ export class CLIOrchestrator {
     return messages[toolName] || `⚡ ${toolName}${arg ? `: ${arg}` : ''}`;
   }
 
+  private getReviewToolMessage(toolName: string, arg?: string): string {
+    const messages: Record<string, string> = {
+      Read: `📖 Reading ${arg || 'file'}`,
+      Grep: `🔍 Searching for pattern${arg ? `: ${arg}` : ''}`,
+      Glob: `📁 Finding files${arg ? `: ${arg}` : ''}`,
+    };
+    return messages[toolName] || `⚡ ${toolName}${arg ? `: ${arg}` : ''}`;
+  }
+
+  // private getToolIcon(toolName: string): string {
+  //   const icons: Record<string, string> = {
+  //     // Context tools
+  //     search: '🔍',
+  //     getIssue: '📋',
+  //     getJiraIssue: '📋',
+  //     searchConfluencePages: '📚',
+  //     getConfluencePage: '📄',
+  //     fetch: '📡',
+  //     getAccessibleAtlassianResources: '🌐',
+  //     // Review tools
+  //     Read: '📖',
+  //     Grep: '🔍',
+  //     Glob: '📁',
+  //   };
+  //   return icons[toolName] || '⚡';
+  // }
 }

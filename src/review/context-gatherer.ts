@@ -19,6 +19,7 @@ export class ContextGatherer {
           timestamp: Date.now(),
         },
       })
+
       return { ...state, context: 'Context gathering skipped.' };
     }
 
