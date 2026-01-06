@@ -128,8 +128,23 @@ export class CLIOrchestrator {
         selectedPr.source.commitHash,
       );
 
-      const s6 = this.ui.spinner();
-      s6.start(theme.accent('Mentat analyzing pull request metadata'));
+      // Phase tracking for event ordering
+      enum Phase {
+        INIT = 'init',
+        CONTEXT = 'context',
+        REVIEW = 'review',
+        COMPLETE = 'complete'
+      }
+
+      let currentPhase = Phase.INIT;
+      
+      // Separate spinners for different phases
+      const contextSpinner = this.ui.spinner();
+      const reviewSpinner = this.ui.spinner();
+      
+      // Error tracking
+      let contextHasError = false;
+      let reviewHasError = false;
 
       const events = this.reviewService.streamReview({
         commits: commitMessages,
@@ -155,17 +170,21 @@ export class CLIOrchestrator {
           switch (event.type) {
             // ====== CONTEXT EVENTS ======
             case 'context_start':
+              currentPhase = Phase.CONTEXT;
               this.ui.section('Deep Context Gathering');
-              s6.message(theme.accent('Starting context gathering...'));
+              contextSpinner.start(theme.accent('Starting context gathering...'));
               break;
 
             case 'context_skipped':
-              s6.stop(theme.muted('⊘ Context gathering skipped'));
+              contextSpinner.stop(theme.muted('⊘ Context gathering skipped'));
               this.ui.info(event.message);
               break;
 
             case 'context_tool_result':
-              s6.message(theme.secondary('Thinking'));
+              if (contextHasError) {
+                break;
+              }
+              contextSpinner.message(theme.secondary('Thinking'));
               break;
 
             case 'context_thinking':
@@ -173,6 +192,10 @@ export class CLIOrchestrator {
               break;
 
             case 'context_tool_call': {
+              if (contextHasError) {
+                break;
+              }
+              
               const count = toolsByType.get(event.toolName) || 0;
               toolsByType.set(event.toolName, count + 1);
 
@@ -182,7 +205,7 @@ export class CLIOrchestrator {
               );
               const spinnerMessage = displayMessage.split(' ', 1)[0];
               this.ui.info(displayMessage);
-              s6.message(theme.secondary(spinnerMessage));
+              contextSpinner.message(theme.secondary(spinnerMessage));
               break;
             }
 
@@ -191,14 +214,17 @@ export class CLIOrchestrator {
               break;
 
             case 'context_success': {
-              s6.stop(theme.success(`✓ ${event.message}`));
-              this.ui.sectionComplete('Deep context synthesis complete');
+              if (currentPhase === Phase.CONTEXT && !contextHasError) {
+                contextSpinner.stop(theme.success(`✓ ${event.message}`));
+              }
               break;
             }
 
             case 'context_error':
-              s6.stop(theme.error('✗ Context gathering failed'));
+              contextHasError = true;
+              contextSpinner.stop(theme.error('✗ Context gathering failed'));
               this.ui.error(event.message);
+              this.ui.warn('Proceeding with review using limited context');
               break;
 
             case 'context_data':
@@ -211,22 +237,44 @@ export class CLIOrchestrator {
 
             // ====== REVIEW EVENTS ======
             case 'review_start':
+              if (currentPhase === Phase.CONTEXT) {
+                this.ui.sectionComplete('Deep context synthesis complete');
+                currentPhase = Phase.REVIEW;
+              }
+              
+              if (contextHasError) {
+                this.ui.warn('Starting review with degraded context');
+              }
+              
               this.ui.section('Code Review Analysis');
-              s6.start(theme.accent('Initializing Claude Code in read-only mode...'));
+              reviewSpinner.start(theme.accent('Initializing Claude Code in read-only mode...'));
               break;
 
             case 'review_thinking': {
-              // Only show short, meaningful thoughts
-              if (event.text.length < 100) {
-                const display = event.text.length > 70
-                  ? event.text.substring(0, 70) + '...'
-                  : event.text;
-                s6.message(theme.dim(`💭 ${display}`));
+              // TODO: Add tests for review_thinking handling:
+              // - verify spinner message updates for mid-length thoughts (10 < len < 100)
+              // - ensure very short and very long thoughts are ignored
+              // - confirm no updates occur when reviewHasError is true
+              if (reviewHasError) {
+                break;
+              }
+              
+              const text = event.text.trim();
+              // Only show meaningful thoughts (not too short, not too long)
+              if (text.length > 10 && text.length < 100) {
+                const display = text.length > 70
+                  ? text.substring(0, 70) + '...'
+                  : text;
+                reviewSpinner.message(theme.dim(`💭 ${display}`));
               }
               break;
             }
 
             case 'review_tool_call': {
+              if (reviewHasError) {
+                break;
+              }
+              
               const count = toolsByType.get(event.toolName) || 0;
               toolsByType.set(event.toolName, count + 1);
 
@@ -236,23 +284,30 @@ export class CLIOrchestrator {
               );
               const spinnerMessage = displayMessage.split(' ', 1)[0];
               this.ui.info(displayMessage);
-              s6.message(theme.secondary(spinnerMessage));
+              reviewSpinner.message(theme.secondary(spinnerMessage));
               break;
             }
 
             case 'review_tool_result':
-              s6.message(theme.secondary('Analyzing'));
+              if (reviewHasError) {
+                break;
+              }
+
+              reviewSpinner.message(theme.secondary('Analyzing'));
               break;
 
             case 'review_success': {
-              s6.stop(theme.success(`✓ ${event.message}`));
-
-              this.ui.sectionComplete('Analysis complete');
+              if (currentPhase === Phase.REVIEW && !reviewHasError) {
+                reviewSpinner.stop(theme.success(`✓ ${event.message}`));
+                this.ui.sectionComplete('Analysis complete');
+                currentPhase = Phase.COMPLETE;
+              }
               break;
             }
 
             case 'review_error':
-              s6.stop(theme.error('✗ Review failed'));
+              reviewHasError = true;
+              reviewSpinner.stop(theme.error('✗ Review failed'));
               this.ui.error(event.message);
               break;
           }
@@ -263,10 +318,18 @@ export class CLIOrchestrator {
         }
       }
       console.log(''); // Spacing
-      clack.outro(
-        theme.primary('⚡ Mentat computation complete. ')
-        + theme.muted('The analysis is now in your hands.'),
-      );
+      
+      if (contextHasError || reviewHasError) {
+        clack.outro(
+          theme.warning('⚠ Mentat completed with errors. ')
+          + theme.muted('Please review the output carefully.'),
+        );
+      } else {
+        clack.outro(
+          theme.primary('⚡ Mentat computation complete. ')
+          + theme.muted('The analysis is now in your hands.'),
+        );
+      }
     } catch (error) {
       clack.cancel(
         theme.error('✗ Mentat encountered an error:\n')

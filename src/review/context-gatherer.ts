@@ -9,7 +9,10 @@ export class ContextGatherer {
   ) { }
 
   async gather(state: ReviewState, config: LangGraphRunnableConfig): Promise<Partial<ReviewState>> {
-    const writer: (chunk: ContextEvent) => void = config.writer!; // TODO: Handle undefined writer more gracefully
+    // Create safe writer - either real or no-op
+    const writer = config.writer || ((_event: ContextEvent) => {
+      // Silent no-op when streaming not configured
+    });
 
     if (!state.gatherContext) {
       writer({

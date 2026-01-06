@@ -25,7 +25,10 @@ export class CodeReviewer {
     state: ReviewState,
     config: LangGraphRunnableConfig
   ): Promise<Partial<ReviewState>> {
-    const writer: (chunk: ReviewEvent) => void = config.writer!; // TODO: Handle undefined writer more gracefully
+    // Create safe writer - either real or no-op
+    const writer = config.writer || ((_event: ReviewEvent) => {
+      // Silent no-op when streaming not configured
+    });
 
     writer({
       type: 'review_start',
