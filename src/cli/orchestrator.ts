@@ -1,13 +1,20 @@
 import * as clack from '@clack/prompts';
-import { exit } from 'process';
 import GitOperations from '../git/operations';
-import type { GitProvider } from '../providers/types';
+import type { GitProvider, PullRequest } from '../providers/types';
 import { ReviewService } from '../review/review-service';
 import ContextCache from '../cache/context-cache';
 import { theme } from '../ui/theme';
 import { UILogger } from '../ui/logger';
 import { displayHeader, displayContext, displayComments } from './display';
 import { promptForRemote, promptForPR, promptForCacheStrategy } from './prompts';
+import { isContextEvent, isReviewEvent, type ContextEvent, type ReviewEvent } from '../review/types';
+
+enum Phase {
+  INIT = 'init',
+  CONTEXT = 'context',
+  REVIEW = 'review',
+  COMPLETE = 'complete'
+}
 
 export class CLIOrchestrator {
   constructor(
@@ -18,339 +25,366 @@ export class CLIOrchestrator {
     private ui: UILogger,
   ) { }
 
-  async run(): Promise<void> {
-    displayHeader();
+  private setupCleanupHandlers(currentBranch: string): {
+    cleanup: (signal?: string) => Promise<void>;
+    cleanupDone: { value: boolean };
+  } {
+    const cleanupDone = { value: false };
 
-    clack.intro(theme.primary('Initiating Mentat analysis protocol...'));
-
-    const currentBranch = await this.git.getCurrentBranch();
-
-    try {
-      // Step 1: Select remote
-      const s1 = this.ui.spinner();
-      s1.start(theme.muted('Scanning git remotes...'));
-
-      const allRemotes = await this.git.getRemotes();
-      s1.stop(theme.success(`✓ Found ${allRemotes.length} remote(s)`));
-
-      const selectedRemote = await promptForRemote(allRemotes);
-
-      // Step 2: Fetch PRs
-      const s2 = this.ui.spinner();
-      s2.start(theme.muted('Querying pull requests from remote...'));
-
-      const provider = this.createProvider(selectedRemote);
-      const prs = await provider.fetchPullRequests();
-
-      s2.stop(theme.success(`✓ Retrieved ${prs.length} pull request(s)`));
-
-      if (prs.length === 0) {
-        clack.outro(theme.warning('No pull requests found. Mentat standing by.'));
-        process.exit(0);
-      }
-
-      // Step 3: Select PR
-      const selectedPr = await promptForPR(prs);
-
-      clack.log.step(theme.muted(`Target: ${selectedPr.title}`));
-      clack.log.step(theme.muted(`Source: ${selectedPr.source.name} (${selectedPr.source.commitHash.substring(0, 8)})`));
-      clack.log.step(theme.muted(`Target: ${selectedPr.target.name} (${selectedPr.target.commitHash.substring(0, 8)})`));
-
-      // Step 4: Prepare repository
-      const s3 = this.ui.spinner();
-      s3.start(theme.muted('Synchronizing repository state...'));
+    const cleanup = async (signal?: string) => {
+      if (cleanupDone.value) return;
+      cleanupDone.value = true;
 
       try {
-        // Fetch the specific branches we need
-        s3.message(theme.muted('Fetching PR branches...'));
-
-        await this.git.fetch(selectedRemote, selectedPr.source.name);
-        await this.git.fetch(selectedRemote, selectedPr.target.name);
-
-        s3.message(theme.muted('Entering computation state (checking out source)...'));
-
-        // Checkout the source commit
-        await this.git.checkout(selectedPr.source.commitHash);
-
-        s3.stop(theme.success('✓ Repository prepared'));
-
-      } catch (error) {
-        s3.stop(theme.error('✗ Repository synchronization failed'));
-
-        this.ui.error(`Failed to prepare repository: ${(error as Error).message}`);
-
-        // Suggest recovery
-        this.ui.info(`Try running: git fetch ${selectedRemote} ${selectedPr.source.name}`);
-
-        throw error;
-      }
-
-      // Step 5: Analyze changes
-      const s4 = this.ui.spinner();
-      s4.start(theme.muted('Computing diff matrix...'));
-
-      const fullDiff = await this.git.getDiff(selectedPr.target.commitHash, selectedPr.source.commitHash);
-      const editedFiles = await this.git.getDiffSummary(
-        selectedPr.target.commitHash,
-        selectedPr.source.commitHash,
-      );
-
-      s4.stop(theme.success(`✓ Analyzed ${editedFiles.length} file(s)`));
-
-      clack.log.info(
-        theme.muted('Modified files: ')
-        + theme.secondary(editedFiles.slice(0, 5).join(', '))
-        + (editedFiles.length > 5 ? theme.muted(` (+${editedFiles.length - 5} more)`) : ''),
-      );
-
-      // Step 6: Fetch commit history
-      const s5 = this.ui.spinner();
-      s5.start(theme.muted('Retrieving commit chronology...'));
-
-      const commitMessages = await provider.fetchCommits(selectedPr);
-      s5.stop(theme.success(`✓ Processed ${commitMessages.length} commit(s)`));
-
-      console.log(''); // Spacing
-
-      // Step 7: Handle cache strategy
-      const cacheInput = { sourceBranch: selectedPr.source.name, targetBranch: selectedPr.target.name };
-      const hasCached = this.cache.has(cacheInput);
-      const meta = hasCached ? this.cache.getMetadata(cacheInput) : undefined;
-
-      let cachedContext;
-      if (hasCached && meta) {
-        cachedContext = this.cache.get(cacheInput) || undefined;
-      }
-
-      const { gatherContext, refreshCache } = await promptForCacheStrategy(
-        hasCached,
-        meta || undefined,
-        selectedPr.source.commitHash,
-      );
-
-      // Phase tracking for event ordering
-      enum Phase {
-        INIT = 'init',
-        CONTEXT = 'context',
-        REVIEW = 'review',
-        COMPLETE = 'complete'
-      }
-
-      let currentPhase = Phase.INIT;
-      
-      // Separate spinners for different phases
-      const contextSpinner = this.ui.spinner();
-      const reviewSpinner = this.ui.spinner();
-      
-      // Error tracking
-      let contextHasError = false;
-      let reviewHasError = false;
-
-      const events = this.reviewService.streamReview({
-        commits: commitMessages,
-        title: selectedPr.title,
-        description: selectedPr.description || '',
-        editedFiles,
-        sourceHash: selectedPr.source.commitHash,
-        sourceName: selectedPr.source.name,
-        targetHash: selectedPr.target.commitHash,
-        targetName: selectedPr.target.name,
-        diff: fullDiff,
-        gatherContext,
-        refreshCache,
-        cachedContext
-      });
-
-      const toolsByType = new Map<string, number>();
-      // const isThinking = false;
-      // const thinkingText = '';
-
-      for await (const event of events) {
-        if ('type' in event) {
-          switch (event.type) {
-            // ====== CONTEXT EVENTS ======
-            case 'context_start':
-              currentPhase = Phase.CONTEXT;
-              this.ui.section('Deep Context Gathering');
-              contextSpinner.start(theme.accent('Starting context gathering...'));
-              break;
-
-            case 'context_skipped':
-              contextSpinner.stop(theme.muted('⊘ Context gathering skipped'));
-              this.ui.info(event.message);
-              break;
-
-            case 'context_tool_result':
-              if (contextHasError) {
-                break;
-              }
-              contextSpinner.message(theme.secondary('Thinking'));
-              break;
-
-            case 'context_thinking':
-              // Reserved for future token streaming
-              break;
-
-            case 'context_tool_call': {
-              if (contextHasError) {
-                break;
-              }
-              
-              const count = toolsByType.get(event.toolName) || 0;
-              toolsByType.set(event.toolName, count + 1);
-
-              const displayMessage = this.getContextToolMessage(
-                event.toolName,
-                event.input
-              );
-              const spinnerMessage = displayMessage.split(' ', 1)[0];
-              this.ui.info(displayMessage);
-              contextSpinner.message(theme.secondary(spinnerMessage));
-              break;
-            }
-
-            case 'context_tool_call_reasoning':
-              this.ui.step(event.message);
-              break;
-
-            case 'context_success': {
-              if (currentPhase === Phase.CONTEXT && !contextHasError) {
-                contextSpinner.stop(theme.success(`✓ ${event.message}`));
-              }
-              break;
-            }
-
-            case 'context_error':
-              contextHasError = true;
-              contextSpinner.stop(theme.error('✗ Context gathering failed'));
-              this.ui.error(event.message);
-              this.ui.warn('Proceeding with review using limited context');
-              break;
-
-            case 'context_data':
-              this.cache.set({
-                sourceBranch: event.data.sourceBranch,
-                targetBranch: event.data.targetBranch,
-                currentCommit: event.data.currentCommit,
-              }, event.data.context);
-              break;
-
-            // ====== REVIEW EVENTS ======
-            case 'review_start':
-              if (currentPhase === Phase.CONTEXT) {
-                this.ui.sectionComplete('Deep context synthesis complete');
-                currentPhase = Phase.REVIEW;
-              }
-              
-              if (contextHasError) {
-                this.ui.warn('Starting review with degraded context');
-              }
-              
-              this.ui.section('Code Review Analysis');
-              reviewSpinner.start(theme.accent('Initializing Claude Code in read-only mode...'));
-              break;
-
-            case 'review_thinking': {
-              // TODO: Add tests for review_thinking handling:
-              // - verify spinner message updates for mid-length thoughts (10 < len < 100)
-              // - ensure very short and very long thoughts are ignored
-              // - confirm no updates occur when reviewHasError is true
-              if (reviewHasError) {
-                break;
-              }
-              
-              const text = event.text.trim();
-              // Only show meaningful thoughts (not too short, not too long)
-              if (text.length > 10 && text.length < 100) {
-                const display = text.length > 70
-                  ? text.substring(0, 70) + '...'
-                  : text;
-                reviewSpinner.message(theme.dim(`💭 ${display}`));
-              }
-              break;
-            }
-
-            case 'review_tool_call': {
-              if (reviewHasError) {
-                break;
-              }
-              
-              const count = toolsByType.get(event.toolName) || 0;
-              toolsByType.set(event.toolName, count + 1);
-
-              const displayMessage = this.getReviewToolMessage(
-                event.toolName,
-                event.input
-              );
-              const spinnerMessage = displayMessage.split(' ', 1)[0];
-              this.ui.info(displayMessage);
-              reviewSpinner.message(theme.secondary(spinnerMessage));
-              break;
-            }
-
-            case 'review_tool_result':
-              if (reviewHasError) {
-                break;
-              }
-
-              reviewSpinner.message(theme.secondary('Analyzing'));
-              break;
-
-            case 'review_success': {
-              if (currentPhase === Phase.REVIEW && !reviewHasError) {
-                reviewSpinner.stop(theme.success(`✓ ${event.message}`));
-                this.ui.sectionComplete('Analysis complete');
-                currentPhase = Phase.COMPLETE;
-              }
-              break;
-            }
-
-            case 'review_error':
-              reviewHasError = true;
-              reviewSpinner.stop(theme.error('✗ Review failed'));
-              this.ui.error(event.message);
-              break;
-          }
-        } else {
-          console.log(''); // Spacing
-          displayContext(event.context);
-          displayComments(event.comments);
-        }
-      }
-      console.log(''); // Spacing
-      
-      if (contextHasError || reviewHasError) {
-        clack.outro(
-          theme.warning('⚠ Mentat completed with errors. ')
-          + theme.muted('Please review the output carefully.'),
-        );
-      } else {
-        clack.outro(
-          theme.primary('⚡ Mentat computation complete. ')
-          + theme.muted('The analysis is now in your hands.'),
-        );
-      }
-    } catch (error) {
-      clack.cancel(
-        theme.error('✗ Mentat encountered an error:\n')
-        + theme.muted(`   ${(error as Error).message}`),
-      );
-      throw error;
-    } finally {
-      // Always restore branch
-      try {
+        console.log(''); // Ensure clean line
         const s = this.ui.spinner();
         s.start(theme.muted(`Restoring original state (${currentBranch})...`));
         await this.git.checkout(currentBranch);
         s.stop(theme.success('✓ Repository state restored'));
-        exit();
-      } catch {
+        
+        if (signal) {
+          clack.outro(theme.warning(`⚠ Process interrupted (${signal})`));
+        }
+      } catch (error) {
+        console.error(error);
         clack.log.error(
           theme.error('⚠ Failed to restore branch state\n')
           + theme.muted(`   Please manually run: git checkout ${currentBranch}`),
         );
+      } finally {
+        if (signal) {
+          process.exit(130); // 130 is standard exit code for SIGINT
+        }
+      }
+    };
+
+    const signalHandler = (signal: string) => {
+      cleanup(signal).catch(() => process.exit(1));
+    };
+
+    process.on('SIGINT', () => signalHandler('SIGINT'));
+    process.on('SIGTERM', () => signalHandler('SIGTERM'));
+
+    return { cleanup, cleanupDone };
+  }
+
+  private async selectRemote(): Promise<string> {
+    const s1 = this.ui.spinner();
+    s1.start(theme.muted('Scanning git remotes...'));
+
+    const allRemotes = await this.git.getRemotes();
+    s1.stop(theme.success(`✓ Found ${allRemotes.length} remote(s)`));
+
+    return promptForRemote(allRemotes);
+  }
+
+  private async fetchPullRequests(remote: string): Promise<{ provider: GitProvider; prs: PullRequest[] }> {
+    const s2 = this.ui.spinner();
+    s2.start(theme.muted('Querying pull requests from remote...'));
+
+    const provider = this.createProvider(remote);
+    const prs = await provider.fetchPullRequests();
+
+    s2.stop(theme.success(`✓ Retrieved ${prs.length} pull request(s)`));
+
+    if (prs.length === 0) {
+      clack.outro(theme.warning('No pull requests found. Mentat standing by.'));
+      process.exit(0);
+    }
+
+    return { provider, prs };
+  }
+
+  private async selectPullRequest(prs: PullRequest[]): Promise<PullRequest> {
+    const selectedPr = await promptForPR(prs);
+
+    clack.log.step(theme.muted(`Target: ${selectedPr.title}`));
+    clack.log.step(theme.muted(`Source: ${selectedPr.source.name} (${selectedPr.source.commitHash.substring(0, 8)})`));
+    clack.log.step(theme.muted(`Target: ${selectedPr.target.name} (${selectedPr.target.commitHash.substring(0, 8)})`));
+
+    return selectedPr;
+  }
+
+  private async prepareRepository(remote: string, pr: PullRequest): Promise<void> {
+    const s3 = this.ui.spinner();
+    s3.start(theme.muted('Synchronizing repository state...'));
+
+    try {
+      s3.message(theme.muted('Fetching PR branches...'));
+      await this.git.fetch(remote, pr.source.name);
+      await this.git.fetch(remote, pr.target.name);
+
+      s3.message(theme.muted('Entering computation state (checking out source)...'));
+      await this.git.checkout(pr.source.commitHash);
+
+      s3.stop(theme.success('✓ Repository prepared'));
+    } catch (error) {
+      s3.stop(theme.error('✗ Repository synchronization failed'));
+      this.ui.error(`Failed to prepare repository: ${(error as Error).message}`);
+      this.ui.info(`Try running: git fetch ${remote} ${pr.source.name}`);
+      throw error;
+    }
+  }
+
+  private async analyzeChanges(pr: PullRequest): Promise<{ fullDiff: string; editedFiles: string[] }> {
+    const s4 = this.ui.spinner();
+    s4.start(theme.muted('Computing diff matrix...'));
+
+    const fullDiff = await this.git.getDiff(pr.target.commitHash, pr.source.commitHash);
+    const editedFiles = await this.git.getDiffSummary(pr.target.commitHash, pr.source.commitHash);
+
+    s4.stop(theme.success(`✓ Analyzed ${editedFiles.length} file(s)`));
+
+    clack.log.info(
+      theme.muted('Modified files: ')
+      + theme.secondary(editedFiles.slice(0, 5).join(', '))
+      + (editedFiles.length > 5 ? theme.muted(` (+${editedFiles.length - 5} more)`) : ''),
+    );
+
+    return { fullDiff, editedFiles };
+  }
+
+  private async fetchCommitHistory(provider: GitProvider, pr: PullRequest): Promise<string[]> {
+    const s5 = this.ui.spinner();
+    s5.start(theme.muted('Retrieving commit chronology...'));
+
+    const commitMessages = await provider.fetchCommits(pr);
+    s5.stop(theme.success(`✓ Processed ${commitMessages.length} commit(s)`));
+
+    console.log(''); // Spacing
+    return commitMessages;
+  }
+
+  private async determineCacheStrategy(pr: PullRequest): Promise<{
+    gatherContext: boolean;
+    refreshCache: boolean;
+    cachedContext?: string;
+  }> {
+    const cacheInput = { sourceBranch: pr.source.name, targetBranch: pr.target.name };
+    const hasCached = this.cache.has(cacheInput);
+    const meta = hasCached ? this.cache.getMetadata(cacheInput) : undefined;
+
+    let cachedContext;
+    if (hasCached && meta) {
+      cachedContext = this.cache.get(cacheInput) || undefined;
+    }
+
+    const { gatherContext, refreshCache } = await promptForCacheStrategy(
+      hasCached,
+      meta || undefined,
+      pr.source.commitHash,
+    );
+
+    return { gatherContext, refreshCache, cachedContext };
+  }
+
+  private handleContextEvent(
+    event: ContextEvent,
+    context: {
+      currentPhase: { value: Phase };
+      Phase: typeof Phase;
+      contextSpinner: ReturnType<UILogger['spinner']>;
+      contextHasError: { value: boolean };
+      toolsByType: Map<string, number>;
+    }
+  ): void {
+    const { currentPhase, Phase, contextSpinner, contextHasError, toolsByType } = context;
+
+    switch (event.type) {
+      case 'context_start':
+        currentPhase.value = Phase.CONTEXT;
+        this.ui.section('Deep Context Gathering');
+        contextSpinner.start(theme.accent('Starting context gathering...'));
+        break;
+
+      case 'context_skipped':
+        contextSpinner.stop(theme.muted('⊘ Context gathering skipped'));
+        this.ui.info(event.message);
+        break;
+
+      case 'context_tool_result':
+        if (contextHasError.value) break;
+        contextSpinner.message(theme.secondary('Thinking'));
+        break;
+
+      case 'context_thinking':
+        // Reserved for future token streaming
+        break;
+
+      case 'context_tool_call': {
+        if (contextHasError.value) break;
+        
+        const count = toolsByType.get(event.toolName) || 0;
+        toolsByType.set(event.toolName, count + 1);
+
+        const displayMessage = this.getContextToolMessage(event.toolName, event.input);
+        const spinnerMessage = displayMessage.split(' ', 1)[0];
+        this.ui.info(displayMessage);
+        contextSpinner.message(theme.secondary(spinnerMessage));
+        break;
+      }
+
+      case 'context_tool_call_reasoning':
+        this.ui.step(event.message);
+        break;
+
+      case 'context_success':
+        if (currentPhase.value === Phase.CONTEXT && !contextHasError.value) {
+          contextSpinner.stop(theme.success(`✓ ${event.message}`));
+        }
+        break;
+
+      case 'context_error':
+        contextHasError.value = true;
+        contextSpinner.stop(theme.error('✗ Context gathering failed'));
+        this.ui.error(event.message);
+        this.ui.warn('Proceeding with review using limited context');
+        break;
+
+      case 'context_data':
+        this.cache.set({
+          sourceBranch: event.data.sourceBranch,
+          targetBranch: event.data.targetBranch,
+          currentCommit: event.data.currentCommit,
+        }, event.data.context);
+        break;
+    }
+  }
+
+  private handleReviewEvent(
+    event: ReviewEvent,
+    context: {
+      currentPhase: { value: Phase };
+      Phase: typeof Phase;
+      reviewSpinner: ReturnType<UILogger['spinner']>;
+      reviewHasError: { value: boolean };
+      contextHasError: { value: boolean };
+      toolsByType: Map<string, number>;
+    }
+  ): void {
+    const { currentPhase, Phase, reviewSpinner, reviewHasError, contextHasError, toolsByType } = context;
+
+    switch (event.type) {
+      case 'review_start':
+        if (currentPhase.value === Phase.CONTEXT) {
+          this.ui.sectionComplete('Deep context synthesis complete');
+          currentPhase.value = Phase.REVIEW;
+        }
+        
+        if (contextHasError.value) {
+          this.ui.warn('Starting review with degraded context');
+        }
+        
+        this.ui.section('Code Review Analysis');
+        reviewSpinner.start(theme.accent('Initializing Claude Code in read-only mode...'));
+        break;
+
+      case 'review_thinking': {
+        if (reviewHasError.value) break;
+        
+        const text = event.text.trim();
+        if (text.length > 10 && text.length < 100) {
+          const display = text.length > 70
+            ? text.substring(0, 70) + '...'
+            : text;
+          reviewSpinner.message(theme.dim(`💭 ${display}`));
+        }
+        break;
+      }
+
+      case 'review_tool_call': {
+        if (reviewHasError.value) break;
+        
+        const count = toolsByType.get(event.toolName) || 0;
+        toolsByType.set(event.toolName, count + 1);
+
+        const displayMessage = this.getReviewToolMessage(event.toolName, event.input);
+        const spinnerMessage = displayMessage.split(' ', 1)[0];
+        this.ui.info(displayMessage);
+        reviewSpinner.message(theme.secondary(spinnerMessage));
+        break;
+      }
+
+      case 'review_tool_result':
+        if (reviewHasError.value) break;
+        reviewSpinner.message(theme.secondary('Analyzing'));
+        break;
+
+      case 'review_success':
+        if (currentPhase.value === Phase.REVIEW && !reviewHasError.value) {
+          reviewSpinner.stop(theme.success(`✓ ${event.message}`));
+          this.ui.sectionComplete('Analysis complete');
+          currentPhase.value = Phase.COMPLETE;
+        }
+        break;
+
+      case 'review_error':
+        reviewHasError.value = true;
+        reviewSpinner.stop(theme.error('✗ Review failed'));
+        this.ui.error(event.message);
+        break;
+    }
+  }
+
+  private async processReviewStream(
+    pr: PullRequest,
+    commitMessages: string[],
+    fullDiff: string,
+    editedFiles: string[],
+    cacheConfig: { gatherContext: boolean; refreshCache: boolean; cachedContext?: string }
+  ): Promise<{ contextHasError: boolean; reviewHasError: boolean }> {
+    enum Phase {
+      INIT = 'init',
+      CONTEXT = 'context',
+      REVIEW = 'review',
+      COMPLETE = 'complete'
+    }
+
+    const currentPhase = { value: Phase.INIT };
+    const contextSpinner = this.ui.spinner();
+    const reviewSpinner = this.ui.spinner();
+    const contextHasError = { value: false };
+    const reviewHasError = { value: false };
+    const toolsByType = new Map<string, number>();
+
+    const events = this.reviewService.streamReview({
+      commits: commitMessages,
+      title: pr.title,
+      description: pr.description || '',
+      editedFiles,
+      sourceHash: pr.source.commitHash,
+      sourceName: pr.source.name,
+      targetHash: pr.target.commitHash,
+      targetName: pr.target.name,
+      diff: fullDiff,
+      ...cacheConfig
+    });
+
+    for await (const event of events) {
+      if ('type' in event) {
+        const eventContext = {
+          currentPhase,
+          Phase,
+          contextSpinner,
+          reviewSpinner,
+          contextHasError,
+          reviewHasError,
+          toolsByType
+        };
+
+        if (isContextEvent(event)) {
+          this.handleContextEvent(event, eventContext);
+        } else if (isReviewEvent(event)) {
+          this.handleReviewEvent(event, eventContext);
+        }
+      } else {
+        console.log(''); // Spacing
+        displayContext(event.context);
+        displayComments(event.comments);
       }
     }
+
+    return { contextHasError: contextHasError.value, reviewHasError: reviewHasError.value };
   }
 
   private getContextToolMessage(toolName: string, arg?: string): string {
@@ -375,21 +409,68 @@ export class CLIOrchestrator {
     return messages[toolName] || `⚡ ${toolName}${arg ? `: ${arg}` : ''}`;
   }
 
-  // private getToolIcon(toolName: string): string {
-  //   const icons: Record<string, string> = {
-  //     // Context tools
-  //     search: '🔍',
-  //     getIssue: '📋',
-  //     getJiraIssue: '📋',
-  //     searchConfluencePages: '📚',
-  //     getConfluencePage: '📄',
-  //     fetch: '📡',
-  //     getAccessibleAtlassianResources: '🌐',
-  //     // Review tools
-  //     Read: '📖',
-  //     Grep: '🔍',
-  //     Glob: '📁',
-  //   };
-  //   return icons[toolName] || '⚡';
-  // }
+  public async run(): Promise<void> {
+    displayHeader();
+    clack.intro(theme.primary('Initiating Mentat analysis protocol...'));
+
+    const currentBranch = await this.git.getCurrentBranch();
+    const { cleanup } = this.setupCleanupHandlers(currentBranch);
+
+    try {
+      // Step 1-2: Remote selection and PR fetching
+      const selectedRemote = await this.selectRemote();
+      const { provider, prs } = await this.fetchPullRequests(selectedRemote);
+
+      // Step 3: PR selection
+      const selectedPr = await this.selectPullRequest(prs);
+
+      // Step 4: Repository preparation
+      await this.prepareRepository(selectedRemote, selectedPr);
+
+      // Step 5: Changes analysis
+      const { fullDiff, editedFiles } = await this.analyzeChanges(selectedPr);
+
+      // Step 6: Commit history
+      const commitMessages = await this.fetchCommitHistory(provider, selectedPr);
+
+      // Step 7: Cache strategy
+      const cacheConfig = await this.determineCacheStrategy(selectedPr);
+
+      // Step 8: Process review stream
+      const { contextHasError, reviewHasError } = await this.processReviewStream(
+        selectedPr,
+        commitMessages,
+        fullDiff,
+        editedFiles,
+        cacheConfig
+      );
+
+      console.log(''); // Spacing
+      
+      if (contextHasError || reviewHasError) {
+        clack.outro(
+          theme.warning('⚠ Mentat completed with errors. ')
+          + theme.muted('Please review the output carefully.'),
+        );
+      } else {
+        clack.outro(
+          theme.primary('⚡ Mentat computation complete. ')
+          + theme.muted('The analysis is now in your hands.'),
+        );
+      }
+    } catch (error) {
+      clack.cancel(
+        theme.error('✗ Mentat encountered an error:\n')
+        + theme.muted(`   ${(error as Error).message}`),
+      );
+      throw error;
+    } finally {
+      // Remove signal handlers to prevent double cleanup
+      process.removeAllListeners('SIGINT');
+      process.removeAllListeners('SIGTERM');
+      
+      // Always restore branch (for normal exit)
+      await cleanup();
+    }
+  }
 }
