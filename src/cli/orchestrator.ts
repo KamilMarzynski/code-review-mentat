@@ -25,6 +25,71 @@ export class CLIOrchestrator {
     private ui: UILogger,
   ) { }
 
+  public async run(): Promise<void> {
+    displayHeader();
+    clack.intro(theme.primary('Initiating Mentat analysis protocol...'));
+
+    const currentBranch = await this.git.getCurrentBranch();
+    const { cleanup } = this.setupCleanupHandlers(currentBranch);
+
+    try {
+      // Step 1-2: Remote selection and PR fetching
+      const selectedRemote = await this.selectRemote();
+      const { provider, prs } = await this.fetchPullRequests(selectedRemote);
+
+      // Step 3: PR selection
+      const selectedPr = await this.selectPullRequest(prs);
+
+      // Step 4: Repository preparation
+      await this.prepareRepository(selectedRemote, selectedPr);
+
+      // Step 5: Changes analysis
+      const { fullDiff, editedFiles } = await this.analyzeChanges(selectedPr);
+
+      // Step 6: Commit history
+      const commitMessages = await this.fetchCommitHistory(provider, selectedPr);
+
+      // Step 7: Cache strategy
+      const cacheConfig = await this.determineCacheStrategy(selectedPr);
+
+      // Step 8: Process review stream
+      const { contextHasError, reviewHasError } = await this.processReviewStream(
+        selectedPr,
+        commitMessages,
+        fullDiff,
+        editedFiles,
+        cacheConfig
+      );
+
+      console.log(''); // Spacing
+
+      if (contextHasError || reviewHasError) {
+        clack.outro(
+          theme.warning('⚠ Mentat completed with errors. ')
+          + theme.muted('Please review the output carefully.'),
+        );
+      } else {
+        clack.outro(
+          theme.primary('⚡ Mentat computation complete. ')
+          + theme.muted('The analysis is now in your hands.'),
+        );
+      }
+    } catch (error) {
+      clack.cancel(
+        theme.error('✗ Mentat encountered an error:\n')
+        + theme.muted(`   ${(error as Error).message}`),
+      );
+      throw error;
+    } finally {
+      // Remove signal handlers to prevent double cleanup
+      process.removeAllListeners('SIGINT');
+      process.removeAllListeners('SIGTERM');
+
+      // Always restore branch (for normal exit)
+      await cleanup();
+    }
+  }
+
   private setupCleanupHandlers(currentBranch: string): {
     cleanup: (signal?: string) => Promise<void>;
     cleanupDone: { value: boolean };
@@ -41,7 +106,7 @@ export class CLIOrchestrator {
         s.start(theme.muted(`Restoring original state (${currentBranch})...`));
         await this.git.checkout(currentBranch);
         s.stop(theme.success('✓ Repository state restored'));
-        
+
         if (signal) {
           clack.outro(theme.warning(`⚠ Process interrupted (${signal})`));
         }
@@ -213,7 +278,7 @@ export class CLIOrchestrator {
 
       case 'context_tool_call': {
         if (contextHasError.value) break;
-        
+
         const count = toolsByType.get(event.toolName) || 0;
         toolsByType.set(event.toolName, count + 1);
 
@@ -270,18 +335,18 @@ export class CLIOrchestrator {
           this.ui.sectionComplete('Deep context synthesis complete');
           currentPhase.value = Phase.REVIEW;
         }
-        
+
         if (contextHasError.value) {
           this.ui.warn('Starting review with degraded context');
         }
-        
+
         this.ui.section('Code Review Analysis');
         reviewSpinner.start(theme.accent('Initializing Claude Code in read-only mode'));
         break;
 
       case 'review_thinking': {
         if (reviewHasError.value) break;
-        
+
         const text = event.text.trim();
         if (text.length > 10 && text.length < 100) {
           const display = text.length > 70
@@ -294,7 +359,7 @@ export class CLIOrchestrator {
 
       case 'review_tool_call': {
         if (reviewHasError.value) break;
-        
+
         const count = toolsByType.get(event.toolName) || 0;
         toolsByType.set(event.toolName, count + 1);
 
@@ -318,7 +383,7 @@ export class CLIOrchestrator {
         }
         break;
 
-      case 'review_data': 
+      case 'review_data':
         // TODO: Put comments in cache
         break;
 
@@ -411,70 +476,5 @@ export class CLIOrchestrator {
       Glob: `📁 Finding files${arg ? `: ${arg}` : ''}`,
     };
     return messages[toolName] || `⚡ ${toolName}${arg ? `: ${arg}` : ''}`;
-  }
-
-  public async run(): Promise<void> {
-    displayHeader();
-    clack.intro(theme.primary('Initiating Mentat analysis protocol...'));
-
-    const currentBranch = await this.git.getCurrentBranch();
-    const { cleanup } = this.setupCleanupHandlers(currentBranch);
-
-    try {
-      // Step 1-2: Remote selection and PR fetching
-      const selectedRemote = await this.selectRemote();
-      const { provider, prs } = await this.fetchPullRequests(selectedRemote);
-
-      // Step 3: PR selection
-      const selectedPr = await this.selectPullRequest(prs);
-
-      // Step 4: Repository preparation
-      await this.prepareRepository(selectedRemote, selectedPr);
-
-      // Step 5: Changes analysis
-      const { fullDiff, editedFiles } = await this.analyzeChanges(selectedPr);
-
-      // Step 6: Commit history
-      const commitMessages = await this.fetchCommitHistory(provider, selectedPr);
-
-      // Step 7: Cache strategy
-      const cacheConfig = await this.determineCacheStrategy(selectedPr);
-
-      // Step 8: Process review stream
-      const { contextHasError, reviewHasError } = await this.processReviewStream(
-        selectedPr,
-        commitMessages,
-        fullDiff,
-        editedFiles,
-        cacheConfig
-      );
-
-      console.log(''); // Spacing
-      
-      if (contextHasError || reviewHasError) {
-        clack.outro(
-          theme.warning('⚠ Mentat completed with errors. ')
-          + theme.muted('Please review the output carefully.'),
-        );
-      } else {
-        clack.outro(
-          theme.primary('⚡ Mentat computation complete. ')
-          + theme.muted('The analysis is now in your hands.'),
-        );
-      }
-    } catch (error) {
-      clack.cancel(
-        theme.error('✗ Mentat encountered an error:\n')
-        + theme.muted(`   ${(error as Error).message}`),
-      );
-      throw error;
-    } finally {
-      // Remove signal handlers to prevent double cleanup
-      process.removeAllListeners('SIGINT');
-      process.removeAllListeners('SIGTERM');
-      
-      // Always restore branch (for normal exit)
-      await cleanup();
-    }
   }
 }
