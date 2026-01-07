@@ -259,12 +259,12 @@ export class CLIOrchestrator {
       case 'context_start':
         currentPhase.value = Phase.CONTEXT;
         this.ui.section('Deep Context Gathering');
-        contextSpinner.start(theme.accent('Starting context gathering'));
+        contextSpinner.start(theme.accent('Gathering deep context from pull request metadata'));
         break;
 
       case 'context_skipped':
         contextSpinner.stop(theme.muted('⊘ Context gathering skipped'));
-        this.ui.info(event.message);
+        this.ui.info('Skipping context gathering as per configuration.');
         break;
 
       case 'context_tool_result':
@@ -295,7 +295,10 @@ export class CLIOrchestrator {
 
       case 'context_success':
         if (currentPhase.value === Phase.CONTEXT && !contextHasError.value) {
-          contextSpinner.stop(theme.success(`✓ ${event.message}`));
+          const message = event.dataSource === 'cache'
+            ? 'Using cached deep context'
+            : `Context gathered using ${toolsByType.size} tool call(s)`;
+          contextSpinner.stop(theme.success(`✓ ${message}`));
         }
         break;
 
@@ -377,7 +380,8 @@ export class CLIOrchestrator {
 
       case 'review_success':
         if (currentPhase.value === Phase.REVIEW && !reviewHasError.value) {
-          reviewSpinner.stop(theme.success(`✓ ${event.message}`));
+          const message = `Review complete: ${event.commentCount} observation(s)`;
+          reviewSpinner.stop(theme.success(`✓ ${message}`));
           this.ui.sectionComplete('Analysis complete');
           currentPhase.value = Phase.COMPLETE;
         }

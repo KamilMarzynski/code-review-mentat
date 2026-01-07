@@ -63,7 +63,6 @@ export type StreamEventMetadata = {
 export type StreamEvent<TPrefix extends EventType = EventType> =
   (| {
     type: `${TPrefix}_start`;
-    message: string;
   }
     | {
       type: `${TPrefix}_thinking`;
@@ -80,13 +79,11 @@ export type StreamEvent<TPrefix extends EventType = EventType> =
     }
     | {
       type: `${TPrefix}_tool_result`;
-      summary: string;
-      toolCallCount: number;
     }
     | {
       type: `${TPrefix}_success`;
       dataSource: 'cache' | 'live';
-      message: string;
+      commentCount?: number;
       metadata?: Record<string, unknown>;
     }
     | {
@@ -96,7 +93,6 @@ export type StreamEvent<TPrefix extends EventType = EventType> =
     }
     | {
       type: `${TPrefix}_skipped`;
-      message: string;
     }
     | {
       type: `${TPrefix}_data`;

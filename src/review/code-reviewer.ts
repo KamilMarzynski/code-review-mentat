@@ -8,11 +8,6 @@ type ToolUseBlock = {
   input?: Record<string, any>;
 };
 
-type ToolResultBlock = {
-  type: 'tool_result';
-  content: string | any;
-};
-
 export class CodeReviewer {
   constructor(private claudePath: string) { }
 
@@ -157,7 +152,7 @@ export class CodeReviewer {
   private handleUserMessage(
     msg: any,
     writer: (event: ReviewEvent) => void,
-    toolUseCount: number
+    _toolUseCount: number
   ): void {
     const { content } = msg.message;
     if (!Array.isArray(content)) return;
@@ -166,7 +161,7 @@ export class CodeReviewer {
       if (typeof block !== 'object' || block === null || !('type' in block)) continue;
 
       if (block.type === 'tool_result') {
-        this.emitToolResult(writer, block, toolUseCount);
+        this.emitToolResult(writer);
       }
     }
   }
@@ -198,7 +193,6 @@ export class CodeReviewer {
   private emitReviewStart(writer: (event: ReviewEvent) => void): void {
     writer({
       type: 'review_start',
-      message: 'Starting code review analysis',
       metadata: {
         timestamp: Date.now(),
       },
@@ -232,17 +226,9 @@ export class CodeReviewer {
 
   private emitToolResult(
     writer: (event: ReviewEvent) => void,
-    block: ToolResultBlock,
-    toolCallCount: number
   ): void {
-    const resultText = typeof block.content === 'string'
-      ? block.content
-      : JSON.stringify(block.content);
-
     writer({
       type: 'review_tool_result',
-      summary: resultText,
-      toolCallCount,
       metadata: {
         timestamp: Date.now(),
       },
@@ -253,7 +239,7 @@ export class CodeReviewer {
     writer({
       type: 'review_success',
       dataSource: 'live',
-      message: `Review complete: ${comments.length} observation(s)`,
+      commentCount: comments.length,
       metadata: {
         timestamp: Date.now(),
       },

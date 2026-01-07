@@ -23,13 +23,13 @@ export class ContextGatherer {
 
     try {
       const message = this.buildContextMessage(state);
-      const { context, allMessages, toolCallCount } = await this.processAgentStream(
+      const { context, allMessages } = await this.processAgentStream(
         state,
         message,
         writer
       );
 
-      this.emitSuccess(writer, toolCallCount);
+      this.emitSuccess(writer);
       this.emitContextData(writer, state, context);
 
       return {
@@ -58,7 +58,6 @@ export class ContextGatherer {
   ): Partial<ReviewState> {
     writer({
       type: 'context_skipped',
-      message: 'Skipping context gathering as per configuration.',
       metadata: {
         timestamp: Date.now(),
       },
@@ -74,7 +73,6 @@ export class ContextGatherer {
     writer({
       type: 'context_success',
       dataSource: 'cache',
-      message: 'Using cached deep context.',
       metadata: {
         timestamp: Date.now(),
       },
@@ -95,8 +93,7 @@ Edited Files: ${state.editedFiles.join(', ')}`);
     state: ReviewState,
     message: HumanMessage,
     writer: (event: ContextEvent) => void
-  ): Promise<{ context: string; allMessages: BaseMessage[]; toolCallCount: number }> {
-    let toolCallCount = 0;
+  ): Promise<{ context: string; allMessages: BaseMessage[] }> {
     const allMessages: BaseMessage[] = [...state.messages, message];
 
     const stream = await this.agent.stream({
@@ -109,11 +106,10 @@ Edited Files: ${state.editedFiles.join(', ')}`);
         
         if (this.isAIMessage(currentMessage)) {
           this.handleAIMessage(currentMessage, writer);
-          toolCallCount += this.countToolCalls(currentMessage);
         }
 
         if (this.isToolMessage(currentMessage)) {
-          this.handleToolMessage(currentMessage, writer, toolCallCount);
+          this.handleToolMessage(currentMessage, writer);
         }
 
         allMessages.push(currentMessage);
@@ -121,7 +117,7 @@ Edited Files: ${state.editedFiles.join(', ')}`);
     }
 
     const context = this.extractContext(allMessages);
-    return { context, allMessages, toolCallCount };
+    return { context, allMessages };
   }
 
   private isAIMessage(message: any): boolean {
@@ -184,21 +180,12 @@ Edited Files: ${state.editedFiles.join(', ')}`);
     }
   }
 
-  private countToolCalls(msg: any): number {
-    return (msg.tool_calls && Array.isArray(msg.tool_calls)) ? msg.tool_calls.length : 0;
-  }
-
   private handleToolMessage(
     msg: any,
     writer: (event: ContextEvent) => void,
-    toolCallCount: number
   ): void {
     writer({
       type: 'context_tool_result',
-      summary: typeof msg.content === 'string'
-        ? msg.content
-        : 'Tool returned non-string content',
-      toolCallCount,
       metadata: {
         timestamp: Date.now(),
       },
@@ -225,17 +212,15 @@ Edited Files: ${state.editedFiles.join(', ')}`);
   private emitContextStart(writer: (event: ContextEvent) => void): void {
     writer({
       type: 'context_start',
-      message: 'Gathering deep context from pull request metadata.',
       metadata: {
         timestamp: Date.now(),
       },
     });
   }
 
-  private emitSuccess(writer: (event: ContextEvent) => void, toolCallCount: number): void {
+  private emitSuccess(writer: (event: ContextEvent) => void): void {
     writer({
       type: 'context_success',
-      message: `Context gathered using ${toolCallCount} tool call(s).`,
       dataSource: 'live',
       metadata: {
         timestamp: Date.now(),
