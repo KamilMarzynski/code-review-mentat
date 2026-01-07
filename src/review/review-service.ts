@@ -15,8 +15,7 @@ export class ReviewService {
 
   async *streamReview(input: ReviewInput): AsyncGenerator<ReviewOutput | NodeEvent> {
     const {
-      title,
-      commits, diff, editedFiles, description, sourceName, targetName, gatherContext, refreshCache, context,
+      title, commits, diff, editedFiles, description, sourceName, targetName, gatherContext, refreshCache, context,
     } = input;
 
 

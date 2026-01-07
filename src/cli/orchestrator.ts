@@ -223,15 +223,15 @@ export class CLIOrchestrator {
   private async determineCacheStrategy(pr: PullRequest): Promise<{
     gatherContext: boolean;
     refreshCache: boolean;
-    cachedContext?: string;
+    context?: string;
   }> {
     const cacheInput = { sourceBranch: pr.source.name, targetBranch: pr.target.name };
     const hasCached = this.cache.has(cacheInput);
     const meta = hasCached ? this.cache.getMetadata(cacheInput) : undefined;
 
-    let cachedContext;
+    let context;
     if (hasCached && meta) {
-      cachedContext = this.cache.get(cacheInput) || undefined;
+      context = this.cache.get(cacheInput) || undefined;
     }
 
     const { gatherContext, refreshCache } = await promptForCacheStrategy(
@@ -240,7 +240,7 @@ export class CLIOrchestrator {
       pr.source.commitHash,
     );
 
-    return { gatherContext, refreshCache, cachedContext };
+    return { gatherContext, refreshCache, context };
   }
 
   private handleContextEvent(
@@ -404,7 +404,7 @@ export class CLIOrchestrator {
     commitMessages: string[],
     fullDiff: string,
     editedFiles: string[],
-    cacheConfig: { gatherContext: boolean; refreshCache: boolean; cachedContext?: string }
+    cacheConfig: { gatherContext: boolean; refreshCache: boolean; context?: string }
   ): Promise<{ contextHasError: boolean; reviewHasError: boolean }> {
     enum Phase {
       INIT = 'init',
