@@ -1,43 +1,48 @@
-import envPaths from 'env-paths';
-import { createHash } from 'crypto';
+import { execSync } from "child_process";
+import { createHash } from "crypto";
+import envPaths from "env-paths";
 import {
-  existsSync, mkdirSync, readFileSync, writeFileSync, readdirSync, unlinkSync,
-} from 'fs';
-import { join } from 'path';
-import { execSync } from 'child_process';
+	existsSync,
+	mkdirSync,
+	readdirSync,
+	readFileSync,
+	unlinkSync,
+	writeFileSync,
+} from "fs";
+import { join } from "path";
 
 /**
  * Cache structure for review context and pending comments
  */
 export type CachedContext = {
-  context: string;
-  meta: {
-    // MR identity (stable across commits)
-    mrNumber?: string;
-    sourceBranch: string;
-    targetBranch: string;
+	context: string;
+	meta: {
+		// MR identity (stable across commits)
+		mrNumber?: string;
+		sourceBranch: string;
+		targetBranch: string;
 
-    gatheredAt: string;
-    gatheredFromCommit: string; // For reference only
+		gatheredAt: string;
+		gatheredFromCommit: string; // For reference only
 
-    // Repo identity
-    repoPath: string;
-    repoRemote?: string;
+		// Repo identity
+		repoPath: string;
+		repoRemote?: string;
 
-    version: string;
-  };
-  pendingComments?: ReviewComment[];
-  reviewedAt?: string;
+		version: string;
+	};
+	pendingComments?: ReviewComment[];
+	reviewedAt?: string;
 };
 
 type ReviewComment = {
-  file: string;
-  line?: number;
-  startLine?: number;
-  endLine?: number;
-  severity?: 'nit' | 'suggestion' | 'issue' | 'risk';
-  message: string;
-  rationale?: string;
+	file: string;
+	line?: number;
+	startLine?: number;
+	endLine?: number;
+	severity?: "nit" | "suggestion" | "issue" | "risk";
+	message: string;
+	rationale?: string;
 };
 
 /**
@@ -57,273 +62,282 @@ type ReviewComment = {
  * - NOT based on commit hash (context doesn't change with code changes)
  */
 export default class ContextCache {
-  private readonly cacheDir: string;
+	private readonly cacheDir: string;
 
-  private readonly repoId: string;
+	private readonly repoId: string;
 
-  constructor(repoPath: string = process.cwd()) {
-    // Get system cache directory
-    // macOS: ~/Library/Caches/review-cli/
-    // Linux: ~/.cache/review-cli/
-    // Windows: %LOCALAPPDATA%\review-cli\Cache\
-    const paths = envPaths('review-cli', { suffix: '' });
-    this.cacheDir = paths.cache;
+	constructor(repoPath: string = process.cwd()) {
+		// Get system cache directory
+		// macOS: ~/Library/Caches/review-cli/
+		// Linux: ~/.cache/review-cli/
+		// Windows: %LOCALAPPDATA%\review-cli\Cache\
+		const paths = envPaths("review-cli", { suffix: "" });
+		this.cacheDir = paths.cache;
 
-    // Generate stable repo identifier (prefer git remote, fallback to path)
-    this.repoId = this.getRepoId(repoPath);
+		// Generate stable repo identifier (prefer git remote, fallback to path)
+		this.repoId = this.getRepoId(repoPath);
 
-    // Create cache directory structure
-    const repoCacheDir = join(this.cacheDir, this.repoId);
-    if (!existsSync(repoCacheDir)) {
-      mkdirSync(repoCacheDir, { recursive: true });
-    }
-  }
+		// Create cache directory structure
+		const repoCacheDir = join(this.cacheDir, this.repoId);
+		if (!existsSync(repoCacheDir)) {
+			mkdirSync(repoCacheDir, { recursive: true });
+		}
+	}
 
-  /**
-   * Generate stable identifier for this repo
-   * Priority: git remote URL > absolute path hash
-   */
-   
-  private getRepoId(repoPath: string): string {
-    try {
-      // Try to get git remote URL (most stable across clones/worktrees)
-      const remote = execSync('git config --get remote.origin.url', {
-        cwd: repoPath,
-        encoding: 'utf-8',
-        stdio: ['pipe', 'pipe', 'ignore'],
-      }).trim();
+	/**
+	 * Generate stable identifier for this repo
+	 * Priority: git remote URL > absolute path hash
+	 */
 
-      if (remote) {
-        // Normalize git@github.com:user/repo.git vs https://github.com/user/repo
-        const normalized = remote
-          .replace(/^git@([^:]+):/, 'https://$1/')
-          .replace(/\.git$/, '');
-        return createHash('sha256').update(normalized).digest('hex').substring(0, 16);
-      }
-    } catch {
-      // Not a git repo or no remote
-    }
+	private getRepoId(repoPath: string): string {
+		try {
+			// Try to get git remote URL (most stable across clones/worktrees)
+			const remote = execSync("git config --get remote.origin.url", {
+				cwd: repoPath,
+				encoding: "utf-8",
+				stdio: ["pipe", "pipe", "ignore"],
+			}).trim();
 
-    // Fallback: hash of absolute path
-    return createHash('sha256').update(repoPath).digest('hex').substring(0, 16);
-  }
+			if (remote) {
+				// Normalize git@github.com:user/repo.git vs https://github.com/user/repo
+				const normalized = remote
+					.replace(/^git@([^:]+):/, "https://$1/")
+					.replace(/\.git$/, "");
+				return createHash("sha256")
+					.update(normalized)
+					.digest("hex")
+					.substring(0, 16);
+			}
+		} catch {
+			// Not a git repo or no remote
+		}
 
-  /**
-   * Get full path to cache file
-   */
-  private getCachePath(key: string): string {
-    return join(this.cacheDir, this.repoId, `${key}.json`);
-  }
+		// Fallback: hash of absolute path
+		return createHash("sha256").update(repoPath).digest("hex").substring(0, 16);
+	}
 
-  /**
-   * Generate cache key from MR identity (NOT commit hashes)
-   * If MR number exists, use it. Otherwise use branch names.
-   */
-   
-  private getCacheKey(input: {
-    mrNumber?: string;
-    sourceBranch: string;
-    targetBranch: string;
-  }): string {
-    let key: string;
+	/**
+	 * Get full path to cache file
+	 */
+	private getCachePath(key: string): string {
+		return join(this.cacheDir, this.repoId, `${key}.json`);
+	}
 
-    if (input.mrNumber) {
-      // Prefer MR number (stable even if branch names change)
-      key = `mr-${input.mrNumber}`;
-    } else {
-      // Fallback: source → target branch
-      key = `${input.sourceBranch}-to-${input.targetBranch}`;
-    }
+	/**
+	 * Generate cache key from MR identity (NOT commit hashes)
+	 * If MR number exists, use it. Otherwise use branch names.
+	 */
 
-    // Sanitize for filesystem
-    return key.replace(/[^a-zA-Z0-9-_]/g, '-');
-  }
+	private getCacheKey(input: {
+		mrNumber?: string;
+		sourceBranch: string;
+		targetBranch: string;
+	}): string {
+		let key: string;
 
-  /**
-   * Check if cached context exists for this MR
-   */
-  has(input: {
-    mrNumber?: string;
-    sourceBranch: string;
-    targetBranch: string;
-  }): boolean {
-    const key = this.getCacheKey(input);
-    return existsSync(this.getCachePath(key));
-  }
+		if (input.mrNumber) {
+			// Prefer MR number (stable even if branch names change)
+			key = `mr-${input.mrNumber}`;
+		} else {
+			// Fallback: source → target branch
+			key = `${input.sourceBranch}-to-${input.targetBranch}`;
+		}
 
-  /**
-   * Get cached context for this MR (null if not found)
-   */
-  get(input: {
-    mrNumber?: string;
-    sourceBranch: string;
-    targetBranch: string;
-  }): string | null {
-    const key = this.getCacheKey(input);
-    const cachePath = this.getCachePath(key);
+		// Sanitize for filesystem
+		return key.replace(/[^a-zA-Z0-9-_]/g, "-");
+	}
 
-    if (!existsSync(cachePath)) {
-      return null;
-    }
+	/**
+	 * Check if cached context exists for this MR
+	 */
+	has(input: {
+		mrNumber?: string;
+		sourceBranch: string;
+		targetBranch: string;
+	}): boolean {
+		const key = this.getCacheKey(input);
+		return existsSync(this.getCachePath(key));
+	}
 
-    try {
-      const cached: CachedContext = JSON.parse(readFileSync(cachePath, 'utf-8'));
-      return cached.context;
-    } catch (e) {
-      console.warn(`Cache read failed for ${key}:`, e);
-      return null;
-    }
-  }
+	/**
+	 * Get cached context for this MR (null if not found)
+	 */
+	get(input: {
+		mrNumber?: string;
+		sourceBranch: string;
+		targetBranch: string;
+	}): string | null {
+		const key = this.getCacheKey(input);
+		const cachePath = this.getCachePath(key);
 
-  /**
-   * Store context for this MR (overwrites existing)
-   */
-  set(
-    input: {
-      mrNumber?: string;
-      sourceBranch: string;
-      targetBranch: string;
-      currentCommit: string;
-    },
-    context: string,
-    repoPath: string = process.cwd(),
-  ): void {
-    const key = this.getCacheKey(input);
-    const cachePath = this.getCachePath(key);
+		if (!existsSync(cachePath)) {
+			return null;
+		}
 
-    let repoRemote: string | undefined;
-    try {
-      repoRemote = execSync('git config --get remote.origin.url', {
-        cwd: repoPath,
-        encoding: 'utf-8',
-        stdio: ['pipe', 'pipe', 'ignore'],
-      }).trim();
-    } catch {
-      // Ignore
-    }
+		try {
+			const cached: CachedContext = JSON.parse(
+				readFileSync(cachePath, "utf-8"),
+			);
+			return cached.context;
+		} catch (e) {
+			console.warn(`Cache read failed for ${key}:`, e);
+			return null;
+		}
+	}
 
-    // Preserve pending comments if they exist
-    let existingPendingComments: ReviewComment[] | undefined;
-    if (existsSync(cachePath)) {
-      try {
-        const existing: CachedContext = JSON.parse(readFileSync(cachePath, 'utf-8'));
-        existingPendingComments = existing.pendingComments;
-      } catch {
-        // Ignore parsing errors
-      }
-    }
+	/**
+	 * Store context for this MR (overwrites existing)
+	 */
+	set(
+		input: {
+			mrNumber?: string;
+			sourceBranch: string;
+			targetBranch: string;
+			currentCommit: string;
+		},
+		context: string,
+		repoPath: string = process.cwd(),
+	): void {
+		const key = this.getCacheKey(input);
+		const cachePath = this.getCachePath(key);
 
-    const cached: CachedContext = {
-      context,
-      meta: {
-        mrNumber: input.mrNumber,
-        sourceBranch: input.sourceBranch,
-        targetBranch: input.targetBranch,
-        gatheredAt: new Date().toISOString(),
-        gatheredFromCommit: input.currentCommit,
-        repoPath,
-        repoRemote,
-        version: '1.0',
-      },
-      pendingComments: existingPendingComments,
-    };
+		let repoRemote: string | undefined;
+		try {
+			repoRemote = execSync("git config --get remote.origin.url", {
+				cwd: repoPath,
+				encoding: "utf-8",
+				stdio: ["pipe", "pipe", "ignore"],
+			}).trim();
+		} catch {
+			// Ignore
+		}
 
-    writeFileSync(cachePath, JSON.stringify(cached, null, 2), 'utf-8');
-  }
+		// Preserve pending comments if they exist
+		let existingPendingComments: ReviewComment[] | undefined;
+		if (existsSync(cachePath)) {
+			try {
+				const existing: CachedContext = JSON.parse(
+					readFileSync(cachePath, "utf-8"),
+				);
+				existingPendingComments = existing.pendingComments;
+			} catch {
+				// Ignore parsing errors
+			}
+		}
 
-  /**
-   * Get metadata about cached context (for user prompts)
-   */
-  getMetadata(input: {
-    mrNumber?: string;
-    sourceBranch: string;
-    targetBranch: string;
-  }): CachedContext['meta'] | null {
-    const key = this.getCacheKey(input);
-    const cachePath = this.getCachePath(key);
+		const cached: CachedContext = {
+			context,
+			meta: {
+				mrNumber: input.mrNumber,
+				sourceBranch: input.sourceBranch,
+				targetBranch: input.targetBranch,
+				gatheredAt: new Date().toISOString(),
+				gatheredFromCommit: input.currentCommit,
+				repoPath,
+				repoRemote,
+				version: "1.0",
+			},
+			pendingComments: existingPendingComments,
+		};
 
-    if (!existsSync(cachePath)) {
-      return null;
-    }
+		writeFileSync(cachePath, JSON.stringify(cached, null, 2), "utf-8");
+	}
 
-    try {
-      const cached: CachedContext = JSON.parse(readFileSync(cachePath, 'utf-8'));
-      return cached.meta;
-    } catch {
-      return null;
-    }
-  }
+	/**
+	 * Get metadata about cached context (for user prompts)
+	 */
+	getMetadata(input: {
+		mrNumber?: string;
+		sourceBranch: string;
+		targetBranch: string;
+	}): CachedContext["meta"] | null {
+		const key = this.getCacheKey(input);
+		const cachePath = this.getCachePath(key);
 
-  /**
-   * Clear cache for specific MR
-   */
-  clear(input: {
-    mrNumber?: string;
-    sourceBranch: string;
-    targetBranch: string;
-  }): void {
-    const key = this.getCacheKey(input);
-    const cachePath = this.getCachePath(key);
+		if (!existsSync(cachePath)) {
+			return null;
+		}
 
-    if (existsSync(cachePath)) {
-      unlinkSync(cachePath);
-    }
-  }
+		try {
+			const cached: CachedContext = JSON.parse(
+				readFileSync(cachePath, "utf-8"),
+			);
+			return cached.meta;
+		} catch {
+			return null;
+		}
+	}
 
-  /**
-   * List all cached contexts for this repo
-   */
-  listForRepo(): Array<CachedContext['meta']> {
-    const repoCacheDir = join(this.cacheDir, this.repoId);
+	/**
+	 * Clear cache for specific MR
+	 */
+	clear(input: {
+		mrNumber?: string;
+		sourceBranch: string;
+		targetBranch: string;
+	}): void {
+		const key = this.getCacheKey(input);
+		const cachePath = this.getCachePath(key);
 
-    if (!existsSync(repoCacheDir)) {
-      return [];
-    }
+		if (existsSync(cachePath)) {
+			unlinkSync(cachePath);
+		}
+	}
 
-    return readdirSync(repoCacheDir)
-      .filter((f) => f.endsWith('.json'))
-      .map((f) => {
-        try {
-          const cached: CachedContext = JSON.parse(
-            readFileSync(join(repoCacheDir, f), 'utf-8'),
-          );
-          return cached.meta;
-        } catch {
-          return null;
-        }
-      })
-      .filter((m): m is CachedContext['meta'] => m !== null);
-  }
+	/**
+	 * List all cached contexts for this repo
+	 */
+	listForRepo(): Array<CachedContext["meta"]> {
+		const repoCacheDir = join(this.cacheDir, this.repoId);
 
-  /**
-   * Clear all cache for this repo
-   * Returns number of files deleted
-   */
-  clearRepo(): number {
-    const repoCacheDir = join(this.cacheDir, this.repoId);
+		if (!existsSync(repoCacheDir)) {
+			return [];
+		}
 
-    if (!existsSync(repoCacheDir)) {
-      return 0;
-    }
+		return readdirSync(repoCacheDir)
+			.filter((f) => f.endsWith(".json"))
+			.map((f) => {
+				try {
+					const cached: CachedContext = JSON.parse(
+						readFileSync(join(repoCacheDir, f), "utf-8"),
+					);
+					return cached.meta;
+				} catch {
+					return null;
+				}
+			})
+			.filter((m): m is CachedContext["meta"] => m !== null);
+	}
 
-    const files = readdirSync(repoCacheDir).filter((f) => f.endsWith('.json'));
+	/**
+	 * Clear all cache for this repo
+	 * Returns number of files deleted
+	 */
+	clearRepo(): number {
+		const repoCacheDir = join(this.cacheDir, this.repoId);
 
-    files.forEach((f) => unlinkSync(join(repoCacheDir, f)));
+		if (!existsSync(repoCacheDir)) {
+			return 0;
+		}
 
-    return files.length;
-  }
+		const files = readdirSync(repoCacheDir).filter((f) => f.endsWith(".json"));
 
-  /**
-   * Get path to cache directory (for user reference)
-   */
-  getCacheLocation(): string {
-    return join(this.cacheDir, this.repoId);
-  }
+		files.forEach((f) => unlinkSync(join(repoCacheDir, f)));
 
-  /**
-   * Get global cache root (all repos)
-   */
-  getGlobalCacheLocation(): string {
-    return this.cacheDir;
-  }
+		return files.length;
+	}
+
+	/**
+	 * Get path to cache directory (for user reference)
+	 */
+	getCacheLocation(): string {
+		return join(this.cacheDir, this.repoId);
+	}
+
+	/**
+	 * Get global cache root (all repos)
+	 */
+	getGlobalCacheLocation(): string {
+		return this.cacheDir;
+	}
 }

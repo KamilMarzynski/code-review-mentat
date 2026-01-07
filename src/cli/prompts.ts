@@ -1,111 +1,117 @@
-import * as clack from '@clack/prompts';
-import type { RemoteWithRefs } from 'simple-git';
-import type { PullRequest } from '../providers/types';
-import type { CachedContext } from '../cache/context-cache';
-import { theme } from '../ui/theme';
+import * as clack from "@clack/prompts";
+import type { RemoteWithRefs } from "simple-git";
+import type { CachedContext } from "../cache/context-cache";
+import type { PullRequest } from "../providers/types";
+import { theme } from "../ui/theme";
 
-export async function promptForRemote(remotes: RemoteWithRefs[]): Promise<string> {
-  const selectedRemote = await clack.select({
-    message: theme.accent('Select repository remote:'),
-    options: remotes.map((remote) => ({
-      label: theme.primary(`${remote.name}`) + theme.muted(` → ${remote.refs.fetch}`),
-      value: remote.refs.fetch,
-      hint: remote.name === 'origin' ? 'Primary remote' : undefined,
-    })),
-  });
+export async function promptForRemote(
+	remotes: RemoteWithRefs[],
+): Promise<string> {
+	const selectedRemote = await clack.select({
+		message: theme.accent("Select repository remote:"),
+		options: remotes.map((remote) => ({
+			label:
+				theme.primary(`${remote.name}`) +
+				theme.muted(` → ${remote.refs.fetch}`),
+			value: remote.refs.fetch,
+			hint: remote.name === "origin" ? "Primary remote" : undefined,
+		})),
+	});
 
-  if (clack.isCancel(selectedRemote)) {
-    clack.cancel(theme.error('Operation cancelled by user.'));
-    process.exit(0);
-  }
+	if (clack.isCancel(selectedRemote)) {
+		clack.cancel(theme.error("Operation cancelled by user."));
+		process.exit(0);
+	}
 
-  return selectedRemote.toString();
+	return selectedRemote.toString();
 }
 
 export async function promptForPR(prs: PullRequest[]): Promise<PullRequest> {
-  const pickedPr = await clack.select({
-    message: theme.accent('Select pull request to analyze:'),
-    options: prs.map((pr) => ({
-      label: theme.primary(pr.title),
-      value: pr,
-      hint: theme.muted(`${pr.source.name} → ${pr.target.name}`),
-    })),
-  });
+	const pickedPr = await clack.select({
+		message: theme.accent("Select pull request to analyze:"),
+		options: prs.map((pr) => ({
+			label: theme.primary(pr.title),
+			value: pr,
+			hint: theme.muted(`${pr.source.name} → ${pr.target.name}`),
+		})),
+	});
 
-  if (clack.isCancel(pickedPr)) {
-    clack.cancel(theme.error('Operation cancelled by user.'));
-    process.exit(0);
-  }
+	if (clack.isCancel(pickedPr)) {
+		clack.cancel(theme.error("Operation cancelled by user."));
+		process.exit(0);
+	}
 
-  return pickedPr as PullRequest;
+	return pickedPr as PullRequest;
 }
 
 export async function promptForCacheStrategy(
-  hasCached: boolean,
-  meta?: CachedContext['meta'],
-  currentHash?: string,
+	hasCached: boolean,
+	meta?: CachedContext["meta"],
+	currentHash?: string,
 ): Promise<{ gatherContext: boolean; refreshCache: boolean }> {
-  let gatherContext = true;
-  let refreshCache = false;
+	let gatherContext = true;
+	let refreshCache = false;
 
-  if (hasCached) {
-    const commitChanged = meta?.gatheredFromCommit !== currentHash;
+	if (hasCached) {
+		const commitChanged = meta?.gatheredFromCommit !== currentHash;
 
-    if (!commitChanged) {
-      clack.log.success(
-        theme.success('Deep context already computed. ')
-        + theme.muted(`(gathered ${new Date(meta!.gatheredAt).toLocaleString()})`),
-      );
-    } else {
-      clack.log.warn(
-        `${theme.warning('⚡ New computations detected in the pull request')}\n${theme.muted(`   Previous: ${meta?.gatheredFromCommit?.substring(0, 8)}`)}\n${theme.muted(`   Current:  ${currentHash?.substring(0, 8)}`)}`,
-      );
+		if (!commitChanged) {
+			clack.log.success(
+				theme.success("Deep context already computed. ") +
+					theme.muted(
+						`(gathered ${new Date(meta!.gatheredAt).toLocaleString()})`,
+					),
+			);
+		} else {
+			clack.log.warn(
+				`${theme.warning("⚡ New computations detected in the pull request")}\n${theme.muted(`   Previous: ${meta?.gatheredFromCommit?.substring(0, 8)}`)}\n${theme.muted(`   Current:  ${currentHash?.substring(0, 8)}`)}`,
+			);
 
-      const choice = await clack.select({
-        message: theme.accent('How shall the Mentat proceed?'),
-        options: [
-          {
-            value: 'use',
-            label: theme.success('⚡ Use existing deep context'),
-            hint: 'Instant analysis (no API calls)',
-          },
-          {
-            value: 'refresh',
-            label: theme.warning('🔄 Recompute deep context'),
-            hint: 'Fresh data from Jira/Confluence (costs credits)',
-          },
-          {
-            value: 'skip',
-            label: theme.muted('⏭  Skip context gathering'),
-            hint: 'Review code only, no external intelligence',
-          },
-        ],
-      });
+			const choice = await clack.select({
+				message: theme.accent("How shall the Mentat proceed?"),
+				options: [
+					{
+						value: "use",
+						label: theme.success("⚡ Use existing deep context"),
+						hint: "Instant analysis (no API calls)",
+					},
+					{
+						value: "refresh",
+						label: theme.warning("🔄 Recompute deep context"),
+						hint: "Fresh data from Jira/Confluence (costs credits)",
+					},
+					{
+						value: "skip",
+						label: theme.muted("⏭  Skip context gathering"),
+						hint: "Review code only, no external intelligence",
+					},
+				],
+			});
 
-      if (clack.isCancel(choice)) {
-        clack.cancel(theme.error('Mentat computation interrupted.'));
-        process.exit(0);
-      }
+			if (clack.isCancel(choice)) {
+				clack.cancel(theme.error("Mentat computation interrupted."));
+				process.exit(0);
+			}
 
-      if (choice === 'refresh') {
-        refreshCache = true;
-      } else if (choice === 'skip') {
-        gatherContext = false;
-      }
-    }
-  } else {
-    const shouldGather = await clack.confirm({
-      message: theme.accent('Gather deep context from Jira and Confluence?'),
-      initialValue: true,
-    });
+			if (choice === "refresh") {
+				refreshCache = true;
+			} else if (choice === "skip") {
+				gatherContext = false;
+			}
+		}
+	} else {
+		const shouldGather = await clack.confirm({
+			message: theme.accent("Gather deep context from Jira and Confluence?"),
+			initialValue: true,
+		});
 
-    if (clack.isCancel(shouldGather)) {
-      clack.cancel(theme.error('Mentat computation interrupted.'));
-      process.exit(0);
-    }
+		if (clack.isCancel(shouldGather)) {
+			clack.cancel(theme.error("Mentat computation interrupted."));
+			process.exit(0);
+		}
 
-    gatherContext = Boolean(shouldGather);
-  }
+		gatherContext = Boolean(shouldGather);
+	}
 
-  return { gatherContext, refreshCache };
+	return { gatherContext, refreshCache };
 }

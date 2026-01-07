@@ -1,105 +1,108 @@
-import * as clack from '@clack/prompts';
-import { theme } from './theme';
+import * as clack from "@clack/prompts";
+import { theme } from "./theme";
 
 // Reasoning step counter
 let stepCounter = 0;
 
 export class UILogger {
-  /**
-   * Reset step counter (call at start of agent execution)
-   */
-  resetSteps() {
-    stepCounter = 0;
-  }
+	/**
+	 * Reset step counter (call at start of agent execution)
+	 */
+	resetSteps() {
+		stepCounter = 0;
+	}
 
-  /**
-   * Log a reasoning step
-   */
-  step(message: string) {
-    stepCounter++;
-    console.log('');
-    console.log(`${theme.accent(`  ${stepCounter}. ${message}`)}`);
-  }
+	/**
+	 * Log a reasoning step
+	 */
+	step(message: string) {
+		stepCounter++;
+		console.log("");
+		console.log(`${theme.accent(`  ${stepCounter}. ${message}`)}`);
+	}
 
-  /**
-   * Log a tool call
-   */
-  toolCall(toolName: string, input?: string) {
-    console.log(theme.muted(`     → ${toolName}`) + (input ? theme.dim(`: ${input}`) : ''));
-  }
+	/**
+	 * Log a tool call
+	 */
+	toolCall(toolName: string, input?: string) {
+		console.log(
+			theme.muted(`     → ${toolName}`) +
+				(input ? theme.dim(`: ${input}`) : ""),
+		);
+	}
 
-  /**
-   * Log a tool result (success)
-   */
-  toolResult(summary: string) {
-    console.log(theme.success(`     ✓ ${summary}`));
-  }
+	/**
+	 * Log a tool result (success)
+	 */
+	toolResult(summary: string) {
+		console.log(theme.success(`     ✓ ${summary}`));
+	}
 
-  /**
-   * Log a tool error
-   */
-  toolError(error: string) {
-    console.log(theme.error(`     ✗ ${error}`));
-  }
+	/**
+	 * Log a tool error
+	 */
+	toolError(error: string) {
+		console.log(theme.error(`     ✗ ${error}`));
+	}
 
-  /**
-   * Log agent thinking
-   */
-  thinking(text: string) {
-    console.log(theme.dim(`     ${text}`));
-  }
+	/**
+	 * Log agent thinking
+	 */
+	thinking(text: string) {
+		console.log(theme.dim(`     ${text}`));
+	}
 
-  /**
-   * Start a new section
-   */
-  section(title: string) {
-    console.log('');
-    console.log(theme.primary(`━━━ ${title} ━━━`));
-    this.resetSteps();
-  }
+	/**
+	 * Start a new section
+	 */
+	section(title: string) {
+		console.log("");
+		console.log(theme.primary(`━━━ ${title} ━━━`));
+		this.resetSteps();
+	}
 
-  /**
-   * Section complete
-   */
-  sectionComplete(summary: string) {
-    console.log(theme.success(`✓ ${summary}`));
-    console.log('');
-  }
+	/**
+	 * Section complete
+	 */
+	sectionComplete(summary: string) {
+		console.log(theme.success(`✓ ${summary}`));
+		console.log("");
+	}
 
-  /**
-   * Wrapper around clack.spinner with theme
-   */
-  spinner() {
-    return clack.spinner();
-  }
+	/**
+	 * Wrapper around clack.spinner with theme
+	 */
+	spinner() {
+		return clack.spinner();
+	}
 
-  /**
-   * Log info (uses clack)
-   */
-  info(message: string) {
-    clack.log.info(theme.muted(message));
-  }
+	/**
+	 * Log info (uses clack)
+	 */
+	info(message: string) {
+		clack.log.info(theme.muted(message));
+	}
 
-  /**
-   * Log success (uses clack)
-   */
-  success(message: string) {
-    clack.log.success(theme.success(message));
-  }
+	/**
+	 * Log success (uses clack)
+	 */
+	success(message: string) {
+		clack.log.success(theme.success(message));
+	}
 
-  /**
-   * Log warning (uses clack)
-   */
-  warn(message: string) {
-    clack.log.warn(theme.warning(message));
-  }
+	/**
+	 * Log warning (uses clack)
+	 */
+	warn(message: string) {
+		clack.log.warn(theme.warning(message));
+	}
 
-  /**
-   * Log error (uses clack)
-   */
-  error(message: string) {
-    clack.log.error(theme.error(message));
-  }
+	/**
+	 * Log error (uses clack)
+	 */
+	error(message: string) {
+		clack.log.error(theme.error(message));
+	}
 }
 
 // Export a default instance for convenience
