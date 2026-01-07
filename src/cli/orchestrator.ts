@@ -262,11 +262,6 @@ export class CLIOrchestrator {
         contextSpinner.start(theme.accent('Gathering deep context from pull request metadata'));
         break;
 
-      case 'context_skipped':
-        contextSpinner.stop(theme.muted('⊘ Context gathering skipped'));
-        this.ui.info('Skipping context gathering as per configuration.');
-        break;
-
       case 'context_tool_result':
         if (contextHasError.value) break;
         contextSpinner.message(theme.secondary('Thinking'));

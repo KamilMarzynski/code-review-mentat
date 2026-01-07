@@ -91,9 +91,6 @@ export type StreamEvent<TPrefix extends EventType = EventType> =
       error?: Error;
     }
     | {
-      type: `${TPrefix}_skipped`;
-    }
-    | {
       type: `${TPrefix}_data`;
       data: DataEventData<TPrefix>;
     }) & {
