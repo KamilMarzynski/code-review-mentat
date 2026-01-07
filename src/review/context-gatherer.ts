@@ -11,14 +11,6 @@ export class ContextGatherer {
   public async gather(state: ReviewState, config: LangGraphRunnableConfig): Promise<Partial<ReviewState>> {
     const writer = this.createWriter(config);
 
-    if (!state.gatherContext) {
-      return this.handleSkipped(writer, state);
-    }
-
-    if (!state.refreshCache && state.cachedContext) {
-      return this.handleCached(writer, state);
-    }
-
     this.emitContextStart(writer);
 
     try {
@@ -50,35 +42,6 @@ export class ContextGatherer {
     return config.writer || ((_event: ContextEvent) => {
       // Silent no-op when streaming not configured
     });
-  }
-
-  private handleSkipped(
-    writer: (event: ContextEvent) => void,
-    state: ReviewState
-  ): Partial<ReviewState> {
-    writer({
-      type: 'context_skipped',
-      metadata: {
-        timestamp: Date.now(),
-      },
-    });
-
-    return { ...state, context: 'Context gathering skipped.' };
-  }
-
-  private handleCached(
-    writer: (event: ContextEvent) => void,
-    state: ReviewState
-  ): Partial<ReviewState> {
-    writer({
-      type: 'context_success',
-      dataSource: 'cache',
-      metadata: {
-        timestamp: Date.now(),
-      },
-    });
-
-    return { ...state, context: state.cachedContext };
   }
 
   private buildContextMessage(state: ReviewState): HumanMessage {

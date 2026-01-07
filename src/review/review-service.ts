@@ -16,12 +16,12 @@ export class ReviewService {
   async *streamReview(input: ReviewInput): AsyncGenerator<ReviewOutput | NodeEvent> {
     const {
       title,
-      commits, diff, editedFiles, description, sourceName, targetName, gatherContext, refreshCache, cachedContext,
+      commits, diff, editedFiles, description, sourceName, targetName, gatherContext, refreshCache, context,
     } = input;
 
 
     const events = await this.graph.stream({
-      cachedContext,
+      context,
       commits,
       title,
       description,
@@ -47,8 +47,30 @@ export class ReviewService {
     return new StateGraph(reviewState)
       .addNode('contextSearchCall', (state: ReviewState, config: LangGraphRunnableConfig) => this.contextGatherer.gather(state, config))
       .addNode('reviewCall', (state: ReviewState, config: LangGraphRunnableConfig) => this.codeReviewer.review(state,config))
-      .addEdge(START, 'contextSearchCall')
+      .addConditionalEdges(
+        START,
+        this.shouldGatherContext,
+        {
+          contextSearchCall: 'contextSearchCall',
+          reviewCall: 'reviewCall',
+        }
+      )
       .addEdge('contextSearchCall', 'reviewCall')
       .compile();
+  }
+
+  private shouldGatherContext(state: ReviewState): 'contextSearchCall' | 'reviewCall' {
+    // Skip context gathering if explicitly disabled
+    if (!state.gatherContext) {
+      return 'reviewCall';
+    }
+
+    // Skip context gathering if we have cached context and don't need to refresh
+    if (!state.refreshCache && state.context) {
+      return 'reviewCall';
+    }
+
+    // Otherwise, gather fresh context
+    return 'contextSearchCall';
   }
 }

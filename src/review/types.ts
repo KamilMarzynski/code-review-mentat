@@ -33,7 +33,6 @@ export const reviewState = z.object({
   comments: z.array(
     z.custom<ReviewComment>(),
   ),
-  cachedContext: z.string().optional(),
 });
 
 export type ReviewState = z.infer<typeof reviewState>;
@@ -50,7 +49,7 @@ export type ReviewInput = {
   gatherContext?: boolean,
   refreshCache?: boolean,
   description: string,
-  cachedContext?: string,
+  context?: string,
 };
 
 export type StreamEventMetadata = {
@@ -160,4 +159,4 @@ export type EventOfType<
 // type ToolCallEvent = EventOfType<ContextEvent, 'context_tool_call'>;
 // type ThinkingEvent = EventOfType<ReviewEvent, 'review_thinking'>;
 
-export type ReviewOutput = Required<Omit<ReviewState, 'cachedContext' | 'sourceHash' | 'targetHash' | 'gatherContext' | 'refreshCache' | 'commits' | 'diff' | 'editedFiles' | 'title' | 'description' | 'messages' | 'sourceBranch' | 'targetBranch'>>;
+export type ReviewOutput = Required<Omit<ReviewState, 'sourceHash' | 'targetHash' | 'gatherContext' | 'refreshCache' | 'commits' | 'diff' | 'editedFiles' | 'title' | 'description' | 'messages' | 'sourceBranch' | 'targetBranch'>>;
