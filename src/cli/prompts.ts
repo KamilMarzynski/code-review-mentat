@@ -1,6 +1,6 @@
 import * as clack from "@clack/prompts";
 import type { RemoteWithRefs } from "simple-git";
-import type { CachedContext } from "../cache/context-cache";
+import type { CachedContext } from "../cache/local-cache";
 import type { PullRequest } from "../providers/types";
 import { theme } from "../ui/theme";
 

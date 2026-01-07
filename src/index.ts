@@ -1,6 +1,6 @@
 import { ChatAnthropic } from "@langchain/anthropic";
 import { createAgent } from "langchain";
-import ContextCache from "./cache/context-cache";
+import LocalCache from "./cache/local-cache";
 import { CLIOrchestrator } from "./cli/orchestrator";
 import GitOperations from "./git/operations";
 import { createMCPClient, getMCPTools } from "./mcp/client";
@@ -42,7 +42,7 @@ const main = async () => {
 
 	// Initialize infrastructure services
 	const git = new GitOperations();
-	const cache = new ContextCache();
+	const cache = new LocalCache();
 	const ui = new UILogger();
 
 	// Initialize review services

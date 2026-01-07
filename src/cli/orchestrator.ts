@@ -1,5 +1,5 @@
 import * as clack from "@clack/prompts";
-import type ContextCache from "../cache/context-cache";
+import type LocalCache from "../cache/local-cache";
 import type GitOperations from "../git/operations";
 import type { GitProvider, PullRequest } from "../providers/types";
 import type { ReviewService } from "../review/review-service";
@@ -30,7 +30,7 @@ export class CLIOrchestrator {
 		private git: GitOperations,
 		private createProvider: (remote: string) => GitProvider,
 		private reviewService: ReviewService,
-		private cache: ContextCache,
+		private cache: LocalCache,
 		private ui: UILogger,
 	) {}
 

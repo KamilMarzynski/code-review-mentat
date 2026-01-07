@@ -61,7 +61,7 @@ type ReviewComment = {
  * - Based on MR number or branch names
  * - NOT based on commit hash (context doesn't change with code changes)
  */
-export default class ContextCache {
+export default class LocalCache {
 	private readonly cacheDir: string;
 
 	private readonly repoId: string;
@@ -322,7 +322,9 @@ export default class ContextCache {
 
 		const files = readdirSync(repoCacheDir).filter((f) => f.endsWith(".json"));
 
-		files.forEach((f) => unlinkSync(join(repoCacheDir, f)));
+		files.forEach((f) => {
+			unlinkSync(join(repoCacheDir, f));
+		});
 
 		return files.length;
 	}
