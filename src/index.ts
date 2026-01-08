@@ -27,7 +27,7 @@ const main = async () => {
 	});
 
 	// Create LangChain agent for context gathering
-	const agent = createAgent({
+	const contextGathererAgent = createAgent({
 		model,
 		tools,
 		systemPrompt:
@@ -46,7 +46,7 @@ const main = async () => {
 	const ui = new UILogger();
 
 	// Initialize review services
-	const contextGatherer = new ContextGatherer(agent);
+	const contextGatherer = new ContextGatherer(contextGathererAgent);
 	const codeReviewer = new CodeReviewer(PATH_TO_CLAUDE);
 	const reviewService = new ReviewService(contextGatherer, codeReviewer);
 

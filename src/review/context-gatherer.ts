@@ -65,24 +65,25 @@ Edited Files: ${state.editedFiles.join(", ")}`);
 	): Promise<{ context: string; allMessages: BaseMessage[] }> {
 		const allMessages: BaseMessage[] = [...state.messages, message];
 
-		const stream = await this.agent.stream({
-			messages: allMessages,
-		});
+		const stream = await this.agent.stream(
+			{
+				messages: allMessages,
+			},
+			{
+				streamMode: "messages",
+			},
+		);
 
-		for await (const chunk of stream) {
-			if (chunk.messages && Array.isArray(chunk.messages)) {
-				const currentMessage = chunk.messages[chunk.messages.length - 1];
-
-				if (this.isAIMessage(currentMessage)) {
-					this.handleAIMessage(currentMessage, writer);
-				}
-
-				if (this.isToolMessage(currentMessage)) {
-					this.handleToolMessage(currentMessage, writer);
-				}
-
-				allMessages.push(currentMessage);
+		for await (const [message, _metadata] of stream) {
+			if (this.isAIMessage(message)) {
+				this.handleAIMessage(message, writer);
 			}
+
+			if (this.isToolMessage(message)) {
+				this.handleToolMessage(message, writer);
+			}
+
+			allMessages.push(message);
 		}
 
 		const context = this.extractContext(allMessages);
