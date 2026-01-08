@@ -3,7 +3,14 @@ import { MessagesZodMeta } from "@langchain/langgraph";
 import { registry } from "@langchain/langgraph/zod";
 import * as z from "zod";
 
+export type ReviewCommentStatus =
+	| "pending" // Not yet addressed
+	| "fixed" // Fixed and accepted
+	| "accepted" // Accepted as-is
+	| "rejected"; // Rejected
+
 export type ReviewComment = {
+	id?: string;
 	file: string;
 	line?: number;
 	startLine?: number;
@@ -11,6 +18,20 @@ export type ReviewComment = {
 	severity?: "nit" | "suggestion" | "issue" | "risk";
 	message: string;
 	rationale?: string;
+	status: ReviewCommentStatus;
+};
+
+export type ReviewCommentWithId = ReviewComment & {
+	id: string;
+};
+
+export type FixIteration = {
+	attemptNumber: number;
+	claudeThinking: string; // Claude's reasoning
+	suggestedDiff: string;
+	userFeedback?: string; // User asked to refine
+	userFeedbackReason?: string; // Why they rejected
+	timestamp: number;
 };
 
 export const reviewState = z.object({

@@ -6,6 +6,7 @@ import GitOperations from "./git/operations";
 import { createMCPClient, getMCPTools } from "./mcp/client";
 import BitbucketServerProvider from "./providers/bitbucket";
 import { CodeReviewer } from "./review/code-reviewer";
+import { CommentFixer } from "./review/comment-fixer";
 import { ContextGatherer } from "./review/context-gatherer";
 import { ReviewService } from "./review/review-service";
 import { UILogger } from "./ui/logger";
@@ -49,6 +50,7 @@ const main = async () => {
 	const contextGatherer = new ContextGatherer(contextGathererAgent);
 	const codeReviewer = new CodeReviewer(PATH_TO_CLAUDE);
 	const reviewService = new ReviewService(contextGatherer, codeReviewer);
+	const commentFixer = new CommentFixer(PATH_TO_CLAUDE);
 
 	// Provider factory function
 	const createProvider = (remote: string) =>
@@ -59,6 +61,7 @@ const main = async () => {
 		git,
 		createProvider,
 		reviewService,
+		commentFixer,
 		cache,
 		ui,
 	);

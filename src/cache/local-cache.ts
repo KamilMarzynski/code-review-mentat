@@ -5,11 +5,14 @@ import {
 	existsSync,
 	mkdirSync,
 	readdirSync,
+	readFile,
 	readFileSync,
 	unlinkSync,
+	writeFile,
 	writeFileSync,
 } from "fs";
-import { join } from "path";
+import path, { join } from "path";
+import type { ReviewComment, ReviewCommentWithId } from "../review/types";
 
 /**
  * Cache structure for review context and pending comments
@@ -31,18 +34,8 @@ export type CachedContext = {
 
 		version: string;
 	};
-	pendingComments?: ReviewComment[];
+	pendingComments?: ReviewCommentWithId[];
 	reviewedAt?: string;
-};
-
-type ReviewComment = {
-	file: string;
-	line?: number;
-	startLine?: number;
-	endLine?: number;
-	severity?: "nit" | "suggestion" | "issue" | "risk";
-	message: string;
-	rationale?: string;
 };
 
 /**
@@ -63,6 +56,7 @@ type ReviewComment = {
  */
 export default class LocalCache {
 	private readonly cacheDir: string;
+	private commentsFile = "comments.json";
 
 	private readonly repoId: string;
 
@@ -213,7 +207,7 @@ export default class LocalCache {
 		}
 
 		// Preserve pending comments if they exist
-		let existingPendingComments: ReviewComment[] | undefined;
+		let existingPendingComments: ReviewCommentWithId[] | undefined;
 		if (existsSync(cachePath)) {
 			try {
 				const existing: CachedContext = JSON.parse(
@@ -341,5 +335,68 @@ export default class LocalCache {
 	 */
 	getGlobalCacheLocation(): string {
 		return this.cacheDir;
+	}
+
+	/**
+	 * Save full comments for a PR session
+	 * Called immediately after review completes
+	 */
+	async saveComments(prKey: string, comments: ReviewComment[]): Promise<void> {
+		const commentsPath = path.join(this.cacheDir, this.commentsFile);
+
+		let allComments: Record<string, ReviewComment[]> = {};
+		try {
+			const data = readFileSync(commentsPath, "utf-8");
+			allComments = JSON.parse(data);
+		} catch {
+			// File doesn't exist yet
+		}
+
+		allComments[prKey] = comments;
+
+		writeFileSync(commentsPath, JSON.stringify(allComments, null, 2), "utf-8");
+	}
+
+	/**
+	 * Get all comments for a PR session
+	 */
+	async getComments(prKey: string): Promise<ReviewCommentWithId[]> {
+		const commentsPath = path.join(this.cacheDir, this.commentsFile);
+
+		try {
+			const data = readFileSync(commentsPath, "utf-8");
+			const allComments = JSON.parse(data);
+			return allComments[prKey] || [];
+		} catch {
+			return [];
+		}
+	}
+
+	/**
+	 * Update a single comment's data
+	 */
+	async updateComment(
+		prKey: string,
+		commentId: string,
+		updates: Partial<ReviewCommentWithId>,
+	): Promise<void> {
+		const comments = await this.getComments(prKey);
+		const index = comments.findIndex((c) => c.id === commentId);
+
+		if (index === -1) {
+			throw new Error(`Comment ${commentId} not found`);
+		}
+
+		comments[index] = {
+			...comments[index],
+			...updates,
+		} as ReviewCommentWithId;
+
+		await this.saveComments(prKey, comments);
+	}
+
+	async getUnresolvedComments(prKey: string): Promise<ReviewComment[]> {
+		const comments = await this.getComments(prKey);
+		return comments.filter((c) => c.status === "pending" || !c.status);
 	}
 }
