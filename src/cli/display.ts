@@ -61,7 +61,7 @@ export function displayComments(comments: ReviewComment[]): void {
 	if (comments && comments.length > 0) {
 		clack.log.warn(theme.warning(`⚠ Found ${comments.length} observation(s):`));
 
-		comments.slice(0, 3).forEach((comment, i) => {
+		comments.forEach((comment, i) => {
 			console.log(
 				theme.muted(`  ${i + 1}. `) +
 					theme.secondary(`${comment.file}:${comment.line || "?"}`) +
@@ -73,10 +73,6 @@ export function displayComments(comments: ReviewComment[]): void {
 				),
 			);
 		});
-
-		if (comments.length > 3) {
-			console.log(theme.muted(`  ... and ${comments.length - 3} more`));
-		}
 	} else {
 		clack.log.success(
 			theme.success("✓ No issues detected. Code quality acceptable."),
