@@ -1,7 +1,12 @@
 {
-	"name": "code-review-cli",
+	"name": "code-review-mentat",
+	"version": "0.1.0",
+	"description": "AI-powered CLI tool for automated code review of pull requests",
+	"license": "MIT",
 	"module": "src/index.ts",
 	"scripts": {
+		"build": "bun build src/index.ts --compile --outfile code-review",
+		"start": "bun run src/index.ts",
 		"lint": "bun biome check",
 		"lint:fix": "biome check --write ."
 	},
@@ -14,7 +19,6 @@
 	"peerDependencies": {
 		"typescript": "^5"
 	},
-	"private": true,
 	"type": "module",
 	"dependencies": {
 		"@anthropic-ai/claude-agent-sdk": "^0.1.75",
