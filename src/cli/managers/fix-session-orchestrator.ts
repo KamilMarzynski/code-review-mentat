@@ -263,6 +263,8 @@ export class FixSessionOrchestrator {
 							}
 
 							executionSpinner.start(theme.accent("Continuing..."));
+							// Reset the check timer after a checkpoint to avoid double-prompting
+							lastCheckTime = Date.now();
 							return "continue";
 						}
 					}

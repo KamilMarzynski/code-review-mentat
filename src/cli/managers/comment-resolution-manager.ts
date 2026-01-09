@@ -294,19 +294,9 @@ export class CommentResolutionManager {
 			// Merge: keep status from existing, add new comments
 			const merged = this.mergeComments(existingComments, commentsWithIds);
 			await this.cache.saveComments(prKey, merged);
-
-			clack.log.info(
-				theme.secondary(
-					`Found ${existingComments.length} cached comment(s), ` +
-						`${commentsWithIds.length} from review`,
-				),
-			);
 		} else {
 			// Fresh save
 			await this.cache.saveComments(prKey, commentsWithIds);
-			clack.log.info(
-				theme.secondary(`Saved ${commentsWithIds.length} comment(s) to cache`),
-			);
 		}
 
 		return commentsWithIds;

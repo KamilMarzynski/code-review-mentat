@@ -7,6 +7,7 @@ import type { CommentResolutionManager } from "./managers/comment-resolution-man
 import type { FixSessionOrchestrator } from "./managers/fix-session-orchestrator";
 import type { PRWorkflowManager } from "./managers/pr-workflow-manager";
 import type { ReviewStreamHandler } from "./managers/review-stream-handler";
+import { promptToResolveComments } from "./prompts";
 
 export class CLIOrchestrator {
 	constructor(
@@ -95,6 +96,18 @@ export class CLIOrchestrator {
 
 			if (pendingComments.length > 0) {
 				console.log(""); // Spacing
+
+				const shouldResolve = await promptToResolveComments();
+
+				if (!shouldResolve) {
+					clack.log.info(
+						theme.muted(
+							"Comments are saved. You can review them anytime by running the tool again.",
+						),
+					);
+					return;
+				}
+
 				await this.handleComments(
 					`${selectedPr.source.name}|${selectedPr.target.name}`,
 				);

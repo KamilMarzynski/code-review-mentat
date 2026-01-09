@@ -147,3 +147,16 @@ export async function promptForPendingCommentsAction(
 
 	return action as "handle" | "review";
 }
+
+export async function promptToResolveComments(): Promise<boolean> {
+	const shouldResolve = await clack.confirm({
+		message: "Would you like to review and resolve these comments now?",
+		initialValue: true,
+	});
+
+	if (clack.isCancel(shouldResolve)) {
+		return false;
+	}
+
+	return Boolean(shouldResolve);
+}

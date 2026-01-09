@@ -281,8 +281,11 @@ export class ReviewStreamHandler {
 
 			case "review_success":
 				if (currentPhase.value === Phase.REVIEW && !reviewHasError.value) {
-					const message = `Review complete: ${event.commentCount} observation(s)`;
-					reviewSpinner.stop(theme.success(`✓ ${message}`));
+					const commentLabel =
+						event.commentCount === 1 ? "comment" : "comments";
+					reviewSpinner.stop(
+						theme.success(`✓ ${event.commentCount} ${commentLabel} found`),
+					);
 					this.ui.sectionComplete("Analysis complete");
 					currentPhase.value = Phase.COMPLETE;
 				}
