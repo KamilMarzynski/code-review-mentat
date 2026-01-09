@@ -1,5 +1,5 @@
 import type { LangGraphRunnableConfig } from "@langchain/langgraph";
-import { ClaudeQueryExecutor, type ClaudeError } from "./claude-query-executor";
+import { type ClaudeError, ClaudeQueryExecutor } from "./claude-query-executor";
 import type { ReviewComment, ReviewEvent, ReviewState } from "./types";
 
 type ToolUseBlock = {
