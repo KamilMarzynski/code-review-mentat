@@ -71,25 +71,24 @@ Edited Files: ${state.editedFiles.join(", ")}`);
 	): Promise<{ context: string; allMessages: BaseMessage[] }> {
 		const allMessages: BaseMessage[] = [...state.messages, message];
 
-		const stream = await this.agent.stream(
-			{
-				messages: allMessages,
-			},
-			{
-				streamMode: "messages",
-			},
-		);
+		const stream = await this.agent.stream({
+			messages: allMessages,
+		});
 
-		for await (const [message, _metadata] of stream) {
-			if (this.isAIMessageType(message)) {
-				this.handleAIMessage(message, writer);
+		for await (const chunk of stream) {
+			if (chunk.messages && Array.isArray(chunk.messages)) {
+				const message = chunk.messages[chunk.messages.length - 1];
+				// console.debug("Received message from agent stream:", message);
+				if (this.isAIMessageType(message)) {
+					this.handleAIMessage(message, writer);
+				}
+
+				if (this.isToolMessageType(message)) {
+					this.handleToolMessage(writer);
+				}
+
+				allMessages.push(message);
 			}
-
-			if (this.isToolMessageType(message)) {
-				this.handleToolMessage(writer);
-			}
-
-			allMessages.push(message);
 		}
 
 		const context = this.extractContext(allMessages);
@@ -165,9 +164,13 @@ Edited Files: ${state.editedFiles.join(", ")}`);
 				args.query ||
 				args.issueKey ||
 				args.issue_key ||
+				args.issueIdOrKey ||
 				args.pageId ||
 				args.page_id ||
 				args.id ||
+				args.jql ||
+				args.cql ||
+				args.cloudId ||
 				"";
 
 			writer({

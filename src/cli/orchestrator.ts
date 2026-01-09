@@ -69,9 +69,6 @@ export class CLIOrchestrator {
 					fullDiff,
 					editedFiles,
 					cacheConfig,
-					async (comments, prKey) => {
-						await this.commentResolution.saveCommentsToCache(comments, prKey);
-					},
 				);
 
 			console.log(""); // Spacing
@@ -88,10 +85,16 @@ export class CLIOrchestrator {
 				);
 			}
 
+			// Check for pending comments to handle
 			const comments = await this.cache.getComments(
 				`${selectedPr.source.name}|${selectedPr.target.name}`,
 			);
-			if (comments.some((c) => c.status === "pending" || !c.status)) {
+			const pendingComments = comments.filter(
+				(c) => c.status === "pending" || !c.status,
+			);
+
+			if (pendingComments.length > 0) {
+				console.log(""); // Spacing
 				await this.handleComments(
 					`${selectedPr.source.name}|${selectedPr.target.name}`,
 				);

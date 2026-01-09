@@ -5,13 +5,12 @@ import {
 	type ContextEvent,
 	isContextEvent,
 	isReviewEvent,
-	type ReviewComment,
 	type ReviewEvent,
 } from "../../review/types";
 import type { UILogger } from "../../ui/logger";
 import { theme } from "../../ui/theme";
-import { displayComments, displayContext } from "../display";
 import { promptForCacheStrategy } from "../prompts";
+import type { CommentResolutionManager } from "./comment-resolution-manager";
 
 enum Phase {
 	INIT = "init",
@@ -25,6 +24,7 @@ export class ReviewStreamHandler {
 		private reviewService: ReviewService,
 		private cache: LocalCache,
 		private ui: UILogger,
+		private commentResolution: CommentResolutionManager,
 	) {}
 
 	public async determineCacheStrategy(pr: PullRequest): Promise<{
@@ -56,10 +56,6 @@ export class ReviewStreamHandler {
 			gatherContext: boolean;
 			refreshCache: boolean;
 		},
-		onCommentsReady: (
-			comments: ReviewComment[],
-			prKey: string,
-		) => Promise<void>,
 	): Promise<{ contextHasError: boolean; reviewHasError: boolean }> {
 		const currentPhase = { value: Phase.INIT };
 		const contextSpinner = this.ui.spinner();
@@ -107,14 +103,8 @@ export class ReviewStreamHandler {
 				if (isContextEvent(event)) {
 					this.handleContextEvent(event, eventContext);
 				} else if (isReviewEvent(event)) {
-					this.handleReviewEvent(event, eventContext);
+					await this.handleReviewEvent(event, eventContext);
 				}
-			} else {
-				console.log(""); // Spacing
-				displayContext(event.context);
-				displayComments(event.comments);
-				const prKey = `${pr.source.name}|${pr.target.name}`;
-				await onCommentsReady(event.comments, prKey);
 			}
 		}
 
@@ -214,7 +204,7 @@ export class ReviewStreamHandler {
 		}
 	}
 
-	private handleReviewEvent(
+	private async handleReviewEvent(
 		event: ReviewEvent,
 		context: {
 			currentPhase: { value: Phase };
@@ -224,7 +214,7 @@ export class ReviewStreamHandler {
 			contextHasError: { value: boolean };
 			toolsByType: Map<string, number>;
 		},
-	): void {
+	): Promise<void> {
 		const {
 			currentPhase,
 			Phase,
@@ -257,10 +247,9 @@ export class ReviewStreamHandler {
 				}
 
 				const text = event.text.trim();
-				if (text.length > 10 && text.length < 100) {
-					const display =
-						text.length > 70 ? text.substring(0, 70) + "..." : text;
-					reviewSpinner.message(theme.dim(`💭 ${display}`));
+				// Show substantial thinking as a step (like context reasoning)
+				if (text.length > 20) {
+					this.ui.step(text);
 				}
 				break;
 			}
@@ -299,9 +288,14 @@ export class ReviewStreamHandler {
 				}
 				break;
 
-			case "review_data":
-				// Review data is handled in the main loop after streaming completes
+			case "review_data": {
+				const prKey = `${event.data.sourceBranch}|${event.data.targetBranch}`;
+				await this.commentResolution.saveCommentsToCache(
+					event.data.comments,
+					prKey,
+				);
 				break;
+			}
 
 			case "review_error":
 				reviewHasError.value = true;

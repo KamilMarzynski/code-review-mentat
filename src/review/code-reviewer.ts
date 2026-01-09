@@ -175,11 +175,16 @@ export class CodeReviewer {
 		writer: (event: ReviewEvent) => void,
 		block: ToolUseBlock,
 	): void {
-		const pathOrPattern = block.input?.path || block.input?.pattern || "";
+		const input =
+			block.input?.file_path ||
+			block.input?.path ||
+			block.input?.pattern ||
+			block.input?.query ||
+			"";
 		writer({
 			type: "review_tool_call",
 			toolName: block.name,
-			input: pathOrPattern,
+			input,
 			metadata: {
 				timestamp: Date.now(),
 			},

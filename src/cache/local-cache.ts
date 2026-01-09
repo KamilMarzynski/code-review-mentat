@@ -1,17 +1,15 @@
-import { execSync } from "child_process";
-import { createHash } from "crypto";
-import envPaths from "env-paths";
+import { execSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import {
 	existsSync,
 	mkdirSync,
 	readdirSync,
-	readFile,
 	readFileSync,
 	unlinkSync,
-	writeFile,
 	writeFileSync,
-} from "fs";
-import path, { join } from "path";
+} from "node:fs";
+import path, { join } from "node:path";
+import envPaths from "env-paths";
 import type { ReviewComment, ReviewCommentWithId } from "../review/types";
 
 /**

@@ -62,6 +62,8 @@ export async function promptForCacheStrategy(
 						`(gathered ${new Date(meta.gatheredAt).toLocaleString()})`,
 					),
 			);
+			// Use cached context, no need to gather again
+			gatherContext = false;
 		} else {
 			clack.log.warn(
 				`${theme.warning("⚡ New computations detected in the pull request")}\n${theme.muted(`   Previous: ${meta?.gatheredFromCommit?.substring(0, 8)}`)}\n${theme.muted(`   Current:  ${currentHash?.substring(0, 8)}`)}`,

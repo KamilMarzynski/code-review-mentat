@@ -74,8 +74,13 @@ const main = async () => {
 	);
 
 	const prWorkflow = new PRWorkflowManager(git, createProvider, cache, ui);
-	const reviewHandler = new ReviewStreamHandler(reviewService, cache, ui);
 	const commentResolution = new CommentResolutionManager(cache, ui);
+	const reviewHandler = new ReviewStreamHandler(
+		reviewService,
+		cache,
+		ui,
+		commentResolution,
+	);
 	const fixSession = new FixSessionOrchestrator(commentFixer, git, cache, ui);
 	const commentDisplay = new CommentDisplayService(ui);
 
