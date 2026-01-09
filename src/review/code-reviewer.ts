@@ -1,5 +1,5 @@
-import { query } from "@anthropic-ai/claude-agent-sdk";
 import type { LangGraphRunnableConfig } from "@langchain/langgraph";
+import { ClaudeQueryExecutor, type ClaudeError } from "./claude-query-executor";
 import type { ReviewComment, ReviewEvent, ReviewState } from "./types";
 
 type ToolUseBlock = {
@@ -9,7 +9,11 @@ type ToolUseBlock = {
 };
 
 export class CodeReviewer {
-	constructor(private claudePath: string) {}
+	private executor: ClaudeQueryExecutor;
+
+	constructor(claudePath: string) {
+		this.executor = new ClaudeQueryExecutor(claudePath);
+	}
 
 	public async review(
 		state: ReviewState,
@@ -18,30 +22,48 @@ export class CodeReviewer {
 		const writer = this.createWriter(config);
 		this.emitReviewStart(writer);
 
-		try {
-			const prompt = this.buildPrompt(state);
-			const q = this.createQuery(prompt);
-			const { finalResult } = await this.processMessages(q, writer);
+		const prompt = this.buildPrompt(state);
 
-			this.validateResult(finalResult);
-			const comments = this.extractComments(finalResult);
+		const result = await this.executor.executeStructured<{
+			comments: ReviewComment[];
+		}>({
+			prompt,
+			schema: this.getReviewSchema(),
+			systemPromptAppend: [
+				"You are in READ-ONLY review mode.",
+				"Never use Edit or Write tools.",
+				"Prefer Grep/Glob/Read for codebase discovery.",
+			].join("\n"),
+			allowedTools: ["Read", "Grep", "Glob"],
+			disallowedTools: ["Edit", "Write"],
+			permissionMode: "default",
+			canUseTool: async (toolName, input) => {
+				if (toolName === "Edit" || toolName === "Write") {
+					return { behavior: "deny", message: "Review node is read-only." };
+				}
+				return { behavior: "allow", updatedInput: input };
+			},
+			onMessage: (msg) => this.handleMessage(msg, writer),
+		});
 
-			this.emitSuccess(writer, comments);
-			this.emitReviewData(writer, state, comments);
-
-			return {
-				...state,
-				comments,
-				result: finalResult.result,
-			};
-		} catch (error) {
-			this.emitError(writer, error as Error);
+		if (!result.success) {
+			this.emitClaudeError(writer, result.error);
 			return {
 				...state,
 				comments: [],
-				result: `Review failed: ${(error as Error).message}`,
+				result: `Review failed: ${result.error.message}`,
 			};
 		}
+
+		const comments = result.data.comments;
+		this.emitSuccess(writer, comments);
+		this.emitReviewData(writer, state, comments);
+
+		return {
+			...state,
+			comments,
+			result: "Review completed successfully",
+		};
 	}
 
 	private createWriter(
@@ -80,65 +102,17 @@ export class CodeReviewer {
 		].join("\n");
 	}
 
-	private createQuery(prompt: string) {
-		return query({
-			prompt,
-			options: {
-				pathToClaudeCodeExecutable: this.claudePath,
-				cwd: process.cwd(),
-				settingSources: ["project"],
-				systemPrompt: {
-					type: "preset",
-					preset: "claude_code",
-					append: [
-						"You are in READ-ONLY review mode.",
-						"Never use Edit or Write tools.",
-						"Prefer Grep/Glob/Read for codebase discovery.",
-					].join("\n"),
-				},
-				outputFormat: { type: "json_schema", schema: this.getReviewSchema() },
-				allowedTools: ["Read", "Grep", "Glob"],
-				disallowedTools: ["Edit", "Write"],
-				executable: "node",
-				permissionMode: "default",
-				canUseTool: async (toolName, input) => {
-					if (toolName === "Edit" || toolName === "Write") {
-						return { behavior: "deny", message: "Review node is read-only." };
-					}
-					return { behavior: "allow", updatedInput: input };
-				},
-			},
-		});
-	}
-
-	private async processMessages(
-		q: AsyncGenerator<any, void>,
-		writer: (event: ReviewEvent) => void,
-	): Promise<{ finalResult: any; toolUseCount: number }> {
-		let finalResult: any | null = null;
-		let toolUseCount = 0;
-
-		for await (const msg of q) {
-			// TODO: Remove debug log
-			console.debug("Msg from claude code", JSON.stringify(msg, null, 2));
-
-			if (msg.type === "assistant") {
-				this.handleAssistantMessage(msg, writer, toolUseCount);
-				toolUseCount = this.countToolUses(msg, toolUseCount);
-			} else if (msg.type === "user") {
-				this.handleUserMessage(msg, writer, toolUseCount);
-			} else if (msg.type === "result") {
-				finalResult = msg;
-			}
+	private handleMessage(msg: any, writer: (event: ReviewEvent) => void): void {
+		if (msg.type === "assistant") {
+			this.handleAssistantMessage(msg, writer);
+		} else if (msg.type === "user") {
+			this.handleUserMessage(msg, writer);
 		}
-
-		return { finalResult, toolUseCount };
 	}
 
 	private handleAssistantMessage(
 		msg: any,
 		writer: (event: ReviewEvent) => void,
-		_toolUseCount: number,
 	): void {
 		const { content } = msg.message;
 		if (!Array.isArray(content)) return;
@@ -158,7 +132,6 @@ export class CodeReviewer {
 	private handleUserMessage(
 		msg: any,
 		writer: (event: ReviewEvent) => void,
-		_toolUseCount: number,
 	): void {
 		const { content } = msg.message;
 		if (!Array.isArray(content)) return;
@@ -171,38 +144,6 @@ export class CodeReviewer {
 				this.emitToolResult(writer);
 			}
 		}
-	}
-
-	private countToolUses(msg: any, currentCount: number): number {
-		const { content } = msg.message;
-		if (!Array.isArray(content)) return currentCount;
-
-		let count = currentCount;
-		for (const block of content) {
-			if (
-				typeof block === "object" &&
-				block !== null &&
-				block.type === "tool_use"
-			) {
-				count++;
-			}
-		}
-		return count;
-	}
-
-	private validateResult(finalResult: any): void {
-		if (!finalResult || finalResult.subtype !== "success") {
-			throw new Error(
-				`Claude Code review failed: ${finalResult?.subtype ?? "unknown"}`,
-			);
-		}
-	}
-
-	private extractComments(finalResult: any): ReviewComment[] {
-		const structured = finalResult.structured_output as
-			| { comments: ReviewComment[] }
-			| undefined;
-		return structured?.comments ?? [];
 	}
 
 	private emitReviewStart(writer: (event: ReviewEvent) => void): void {
@@ -287,14 +228,17 @@ export class CodeReviewer {
 		});
 	}
 
-	private emitError(writer: (event: ReviewEvent) => void, error: Error): void {
+	private emitClaudeError(
+		writer: (event: ReviewEvent) => void,
+		error: ClaudeError,
+	): void {
 		writer({
 			type: "review_error",
 			message: `Review failed: ${error.message}`,
 			error: {
-				name: error.name,
+				name: error.type,
 				message: error.message,
-				stack: error.stack,
+				stack: error.originalError?.stack,
 			},
 			metadata: {
 				timestamp: Date.now(),

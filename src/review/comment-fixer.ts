@@ -1,4 +1,4 @@
-import { query } from "@anthropic-ai/claude-agent-sdk";
+import { ClaudeQueryExecutor } from "./claude-query-executor";
 import type { ReviewComment } from "./types";
 
 export type FixPlan = {
@@ -9,7 +9,11 @@ export type FixPlan = {
 };
 
 export class CommentFixer {
-	constructor(private claudePath: string) {}
+	private executor: ClaudeQueryExecutor;
+
+	constructor(claudePath: string) {
+		this.executor = new ClaudeQueryExecutor(claudePath);
+	}
 
 	// =====================================
 	// PHASE 1: PLANNING (Conversational)
@@ -91,43 +95,25 @@ export class CommentFixer {
 			required: ["approach", "steps", "filesAffected", "potentialRisks"],
 		};
 
-		const q = query({
+		const result = await this.executor.executeStructured<FixPlan>({
 			prompt,
-			options: {
-				pathToClaudeCodeExecutable: this.claudePath,
-				cwd: process.cwd(),
-				settingSources: ["project"],
-				systemPrompt: {
-					type: "preset",
-					preset: "claude_code",
-					append: [
-						"You are in PLANNING mode.",
-						"Create a clear, actionable plan to fix the code review comment.",
-						"Do NOT implement yet - just plan.",
-						"Be specific about what you will change and why.",
-					].join("\n"),
-				},
-				outputFormat: { type: "json_schema", schema },
-				// ✅ Read-only tools for planning
-				allowedTools: ["Read", "Grep", "Glob"],
-				disallowedTools: ["Edit", "Write"],
-				executable: "node",
-				permissionMode: "default",
-			},
+			schema,
+			systemPromptAppend: [
+				"You are in PLANNING mode.",
+				"Create a clear, actionable plan to fix the code review comment.",
+				"Do NOT implement yet - just plan.",
+				"Be specific about what you will change and why.",
+			].join("\n"),
+			allowedTools: ["Read", "Grep", "Glob"],
+			disallowedTools: ["Edit", "Write"],
+			permissionMode: "default",
 		});
 
-		let result: any = null;
-		for await (const msg of q) {
-			if (msg.type === "result" && msg.subtype === "success") {
-				result = msg;
-			}
+		if (!result.success) {
+			throw new Error(`Failed to generate plan: ${result.error.message}`);
 		}
 
-		if (!result?.structured_output) {
-			throw new Error("Failed to generate plan");
-		}
-
-		return result.structured_output as FixPlan;
+		return result.data;
 	}
 
 	// =====================================
@@ -155,43 +141,23 @@ export class CommentFixer {
 	}> {
 		const prompt = this.buildExecutionPrompt(comment, approvedPlan, context);
 
-		const q = query({
-			prompt,
-			options: {
-				pathToClaudeCodeExecutable: this.claudePath,
-				cwd: process.cwd(),
-				settingSources: ["project"],
-				systemPrompt: {
-					type: "preset",
-					preset: "claude_code",
-					append: [
-						"You are in EXECUTION mode.",
-						"Implement the approved plan by editing files.",
-						"Work autonomously until complete.",
-						"Validate your changes as you go.",
-						"",
-						"IMPORTANT: You have an approved plan. Follow it closely.",
-					].join("\n"),
-				},
-				outputFormat: undefined, // Free-form agent mode
-				allowedTools: ["Read", "Write", "Edit", "Grep", "Glob"],
-				executable: "node",
-				permissionMode: "acceptEdits",
-			},
-		});
-
 		const filesModified = new Set<string>();
 		let finalThoughts = "";
 		let toolCallCount = 0;
-		let shouldStop = false;
 
-		try {
-			for await (const msg of q) {
-				if (shouldStop) {
-					// User requested stop - gracefully exit
-					break;
-				}
-
+		const result = await this.executor.executeFreeForm({
+			prompt,
+			systemPromptAppend: [
+				"You are in EXECUTION mode.",
+				"Implement the approved plan by editing files.",
+				"Work autonomously until complete.",
+				"Validate your changes as you go.",
+				"",
+				"IMPORTANT: You have an approved plan. Follow it closely.",
+			].join("\n"),
+			allowedTools: ["Read", "Write", "Edit", "Grep", "Glob"],
+			permissionMode: "acceptEdits",
+			onMessage: async (msg) => {
 				if (msg.type === "assistant") {
 					const { content } = msg.message;
 
@@ -212,7 +178,7 @@ export class CommentFixer {
 											message: text,
 											toolCount: toolCallCount,
 										});
-										if (decision === "stop") shouldStop = true;
+										if (decision === "stop") return "stop";
 									}
 								}
 
@@ -229,7 +195,7 @@ export class CommentFixer {
 										toolCount: toolCallCount,
 									});
 
-									if (decision === "stop") shouldStop = true;
+									if (decision === "stop") return "stop";
 
 									if (toolName === "Edit" && toolBlock.input?.path) {
 										filesModified.add(toolBlock.input.path);
@@ -242,7 +208,7 @@ export class CommentFixer {
 											message: `Checkpoint: ${toolCallCount} operations completed`,
 											toolCount: toolCallCount,
 										});
-										if (checkpointDecision === "stop") shouldStop = true;
+										if (checkpointDecision === "stop") return "stop";
 									}
 								}
 							}
@@ -273,27 +239,31 @@ export class CommentFixer {
 										toolCount: toolCallCount,
 									});
 
-									if (decision === "stop") shouldStop = true;
+									if (decision === "stop") return "stop";
 								}
 							}
 						}
 					}
 				}
-			}
 
-			return {
-				success: !shouldStop,
-				filesModified: Array.from(filesModified),
-				finalThoughts,
-			};
-		} catch (error) {
+				return "continue";
+			},
+		});
+
+		if (!result.success) {
 			return {
 				success: false,
 				filesModified: Array.from(filesModified),
 				finalThoughts: "Execution failed",
-				error: (error as Error).message,
+				error: result.error.message,
 			};
 		}
+
+		return {
+			success: result.data.completed,
+			filesModified: Array.from(filesModified),
+			finalThoughts,
+		};
 	}
 
 	private buildExecutionPrompt(
@@ -306,12 +276,6 @@ export class CommentFixer {
 	): string {
 		return [
 			"# Execute Approved Fix Plan",
-			"",
-			"## Original Comment",
-			`**File:** ${comment.file}`,
-			comment.line ? `**Line:** ${comment.line}` : "",
-			`**Issue:** ${comment.message}`,
-			"",
 			"## Your Approved Plan",
 			"",
 			"**Approach:**",
