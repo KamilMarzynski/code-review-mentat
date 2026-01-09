@@ -56,14 +56,37 @@ const main = async () => {
 	const createProvider = (remote: string) =>
 		new BitbucketServerProvider(remote);
 
+	// Initialize managers with proper DI
+	const { PRWorkflowManager } = await import(
+		"./cli/managers/pr-workflow-manager"
+	);
+	const { ReviewStreamHandler } = await import(
+		"./cli/managers/review-stream-handler"
+	);
+	const { CommentResolutionManager } = await import(
+		"./cli/managers/comment-resolution-manager"
+	);
+	const { FixSessionOrchestrator } = await import(
+		"./cli/managers/fix-session-orchestrator"
+	);
+	const { CommentDisplayService } = await import(
+		"./cli/managers/comment-display-service"
+	);
+
+	const prWorkflow = new PRWorkflowManager(git, createProvider, cache, ui);
+	const reviewHandler = new ReviewStreamHandler(reviewService, cache, ui);
+	const commentResolution = new CommentResolutionManager(cache, ui);
+	const fixSession = new FixSessionOrchestrator(commentFixer, git, cache, ui);
+	const commentDisplay = new CommentDisplayService(ui);
+
 	// Initialize and run orchestrator
 	const orchestrator = new CLIOrchestrator(
-		git,
-		createProvider,
-		reviewService,
-		commentFixer,
+		prWorkflow,
+		reviewHandler,
+		commentResolution,
+		fixSession,
+		commentDisplay,
 		cache,
-		ui,
 	);
 	await orchestrator.run();
 };

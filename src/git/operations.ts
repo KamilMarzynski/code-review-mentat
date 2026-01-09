@@ -54,4 +54,11 @@ export default class GitOperations {
 		]);
 		return summary.files.map((f) => f.file);
 	}
+
+	async status(): Promise<{ modified: string[] }> {
+		const status = await this.git.status();
+		return {
+			modified: status.modified,
+		};
+	}
 }

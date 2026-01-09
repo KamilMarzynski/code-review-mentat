@@ -174,10 +174,9 @@ export class CommentFixer {
 					].join("\n"),
 				},
 				outputFormat: undefined, // Free-form agent mode
-				allowedTools: ["Read", "Edit", "Grep", "Glob"],
-				disallowedTools: ["Write"],
+				allowedTools: ["Read", "Write", "Edit", "Grep", "Glob"],
 				executable: "node",
-				permissionMode: "default",
+				permissionMode: "acceptEdits",
 			},
 		});
 

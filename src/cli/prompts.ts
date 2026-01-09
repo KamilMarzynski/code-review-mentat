@@ -55,11 +55,11 @@ export async function promptForCacheStrategy(
 	if (hasCached) {
 		const commitChanged = meta?.gatheredFromCommit !== currentHash;
 
-		if (!commitChanged) {
+		if (meta && !commitChanged) {
 			clack.log.success(
 				theme.success("Deep context already computed. ") +
 					theme.muted(
-						`(gathered ${new Date(meta!.gatheredAt).toLocaleString()})`,
+						`(gathered ${new Date(meta.gatheredAt).toLocaleString()})`,
 					),
 			);
 		} else {
@@ -114,4 +114,34 @@ export async function promptForCacheStrategy(
 	}
 
 	return { gatherContext, refreshCache };
+}
+
+export async function promptForPendingCommentsAction(
+	pendingCount: number,
+	hasNewCommits: boolean,
+): Promise<"handle" | "review"> {
+	const action = await clack.select({
+		message: "What would you like to do?",
+		options: [
+			{
+				value: "handle",
+				label: "🔧 Handle pending comments",
+				hint: `Resolve ${pendingCount} pending comment(s)`,
+			},
+			{
+				value: "review",
+				label: "🔄 New review",
+				hint: hasNewCommits
+					? "Recommended: Review new changes"
+					: "Perform fresh review",
+			},
+		],
+	});
+
+	if (clack.isCancel(action)) {
+		clack.cancel("Operation cancelled");
+		process.exit(0);
+	}
+
+	return action as "handle" | "review";
 }
