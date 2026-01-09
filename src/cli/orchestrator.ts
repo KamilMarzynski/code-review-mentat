@@ -1,13 +1,13 @@
 import * as clack from "@clack/prompts";
 import type LocalCache from "../cache/local-cache";
 import { theme } from "../ui/theme";
+import { promptToResolveComments } from "./cli-prompts";
 import { displayHeader } from "./display";
 import type { CommentDisplayService } from "./managers/comment-display-service";
 import type { CommentResolutionManager } from "./managers/comment-resolution-manager";
 import type { FixSessionOrchestrator } from "./managers/fix-session-orchestrator";
 import type { PRWorkflowManager } from "./managers/pr-workflow-manager";
 import type { ReviewStreamHandler } from "./managers/review-stream-handler";
-import { promptToResolveComments } from "./prompts";
 
 export class CLIOrchestrator {
 	constructor(

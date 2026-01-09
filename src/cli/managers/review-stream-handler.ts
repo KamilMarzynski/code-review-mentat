@@ -9,7 +9,7 @@ import {
 } from "../../review/types";
 import type { UILogger } from "../../ui/logger";
 import { theme } from "../../ui/theme";
-import { promptForCacheStrategy } from "../prompts";
+import { promptForCacheStrategy } from "../cli-prompts";
 import type { CommentResolutionManager } from "./comment-resolution-manager";
 
 enum Phase {

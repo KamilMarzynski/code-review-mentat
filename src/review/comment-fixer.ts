@@ -201,8 +201,8 @@ export class CommentFixer {
 										filesModified.add(toolBlock.input.path);
 									}
 
-									// ✅ Checkpoint every 5 tool calls
-									if (toolCallCount % 5 === 0) {
+									// ✅ Checkpoint every 10 tool calls
+									if (toolCallCount % 10 === 0) {
 										const checkpointDecision = await onProgress({
 											type: "checkpoint",
 											message: `Checkpoint: ${toolCallCount} operations completed`,

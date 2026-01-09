@@ -1,3 +1,5 @@
+import { exec } from "node:child_process";
+import { promisify } from "node:util";
 import * as clack from "@clack/prompts";
 import type LocalCache from "../../cache/local-cache";
 import type GitOperations from "../../git/operations";
@@ -419,8 +421,6 @@ export class FixSessionOrchestrator {
 		}
 
 		try {
-			const { exec } = await import("node:child_process");
-			const { promisify } = await import("node:util");
 			const execAsync = promisify(exec);
 
 			const { stdout } = await execAsync(
@@ -440,8 +440,6 @@ export class FixSessionOrchestrator {
 		spinner.start(theme.muted("Reverting changes..."));
 
 		try {
-			const { exec } = await import("node:child_process");
-			const { promisify } = await import("node:util");
 			const execAsync = promisify(exec);
 
 			await execAsync(

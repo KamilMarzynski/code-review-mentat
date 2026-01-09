@@ -1,6 +1,11 @@
 import { ChatAnthropic } from "@langchain/anthropic";
 import { createAgent } from "langchain";
 import LocalCache from "./cache/local-cache";
+import { CommentDisplayService } from "./cli/managers/comment-display-service";
+import { CommentResolutionManager } from "./cli/managers/comment-resolution-manager";
+import { FixSessionOrchestrator } from "./cli/managers/fix-session-orchestrator";
+import { PRWorkflowManager } from "./cli/managers/pr-workflow-manager";
+import { ReviewStreamHandler } from "./cli/managers/review-stream-handler";
 import { CLIOrchestrator } from "./cli/orchestrator";
 import GitOperations from "./git/operations";
 import { createMCPClient, getMCPTools } from "./mcp/client";
@@ -56,24 +61,7 @@ const main = async () => {
 	const createProvider = (remote: string) =>
 		new BitbucketServerProvider(remote);
 
-	// Initialize managers with proper DI
-	const { PRWorkflowManager } = await import(
-		"./cli/managers/pr-workflow-manager"
-	);
-	const { ReviewStreamHandler } = await import(
-		"./cli/managers/review-stream-handler"
-	);
-	const { CommentResolutionManager } = await import(
-		"./cli/managers/comment-resolution-manager"
-	);
-	const { FixSessionOrchestrator } = await import(
-		"./cli/managers/fix-session-orchestrator"
-	);
-	const { CommentDisplayService } = await import(
-		"./cli/managers/comment-display-service"
-	);
-
-	const prWorkflow = new PRWorkflowManager(git, createProvider, cache, ui);
+	const prWorkflow = new PRWorkflowManager(git, createProvider, ui);
 	const commentResolution = new CommentResolutionManager(cache, ui);
 	const reviewHandler = new ReviewStreamHandler(
 		reviewService,

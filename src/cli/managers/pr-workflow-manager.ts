@@ -1,16 +1,14 @@
 import * as clack from "@clack/prompts";
-import type LocalCache from "../../cache/local-cache";
 import type GitOperations from "../../git/operations";
 import type { GitProvider, PullRequest } from "../../providers/types";
 import type { UILogger } from "../../ui/logger";
 import { theme } from "../../ui/theme";
-import { promptForPR, promptForRemote } from "../prompts";
+import { promptForPR, promptForRemote } from "../cli-prompts";
 
 export class PRWorkflowManager {
 	constructor(
 		private git: GitOperations,
 		private createProvider: (remote: string) => GitProvider,
-		private cache: LocalCache,
 		private ui: UILogger,
 	) {}
 

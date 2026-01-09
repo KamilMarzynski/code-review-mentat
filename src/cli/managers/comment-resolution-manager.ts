@@ -9,7 +9,7 @@ import type {
 } from "../../review/types";
 import type { UILogger } from "../../ui/logger";
 import { theme } from "../../ui/theme";
-import { promptForPendingCommentsAction } from "../prompts";
+import { promptForPendingCommentsAction } from "../cli-prompts";
 
 export class CommentResolutionManager {
 	constructor(

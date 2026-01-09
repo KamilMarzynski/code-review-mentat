@@ -1,3 +1,6 @@
+import { exec } from "node:child_process";
+import { readFile } from "node:fs/promises";
+import { promisify } from "node:util";
 import * as clack from "@clack/prompts";
 import type { ReviewComment } from "../../review/types";
 import type { UILogger } from "../../ui/logger";
@@ -25,8 +28,7 @@ export class CommentDisplayService {
 
 		// Show the actual code lines
 		try {
-			const fs = await import("node:fs/promises");
-			const fileContent = await fs.readFile(comment.file, "utf-8");
+			const fileContent = await readFile(comment.file, "utf-8");
 			const lines = fileContent.split("\n");
 
 			const startLine = (comment.startLine || comment.line || 1) - 1;
@@ -91,8 +93,6 @@ export class CommentDisplayService {
 
 	public async getFullDiff(): Promise<string> {
 		try {
-			const { exec } = await import("node:child_process");
-			const { promisify } = await import("node:util");
 			const execAsync = promisify(exec);
 
 			// Get diff between target and current branch
