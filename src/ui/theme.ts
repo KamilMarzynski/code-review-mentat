@@ -78,14 +78,15 @@ export const box = {
 	// Standard box width for consistency
 	WIDTH: 55,
 
-	top: (title?: string): string => {
+	top: (title?: string, width?: number): string => {
+		const boxWidth = width ?? box.WIDTH;
 		if (title) {
-			const paddingTotal = box.WIDTH - title.length - 6; // 6 for "╔═══  ═══╗"
+			const paddingTotal = boxWidth - title.length - 6; // 6 for "╔═══  ═══╗"
 			// Prevent negative padding if title is too long
 			if (paddingTotal < 0) {
 				// Title too long, truncate it
-				const maxTitleLength = box.WIDTH - 10;
-				const truncated = title.substring(0, maxTitleLength) + "...";
+				const maxTitleLength = boxWidth - 10;
+				const truncated = `${title.substring(0, maxTitleLength)}...`;
 				return theme.primary(`╔═══ ${truncated} ═══╗`);
 			}
 			const leftPad = Math.floor(paddingTotal / 2);
@@ -94,31 +95,57 @@ export const box = {
 				`╔═══${"═".repeat(leftPad)} ${title} ${"═".repeat(rightPad)}═══╗`,
 			);
 		}
-		return theme.primary(`╔${"═".repeat(box.WIDTH - 2)}╗`);
+		return theme.primary(`╔${"═".repeat(boxWidth - 2)}╗`);
 	},
 
-	bottom: (): string => {
-		return theme.primary(`╚${"═".repeat(box.WIDTH - 2)}╝`);
+	bottom: (width?: number): string => {
+		const boxWidth = width ?? box.WIDTH;
+		return theme.primary(`╚${"═".repeat(boxWidth - 2)}╝`);
 	},
 
-	row: (content: string): string => {
+	row: (content: string, width?: number): string => {
+		const boxWidth = width ?? box.WIDTH;
+		// Strip ANSI escape codes to get the actual visual length
 		const strippedLength = content.replace(
 			// biome-ignore lint/suspicious/noControlCharactersInRegex: ANSI escape codes
 			/\x1b\[[0-9;]*m/g,
 			"",
 		).length;
-		const padding = box.WIDTH - strippedLength - 4; // 4 for "║  ║"
+		const padding = boxWidth - strippedLength - 4; // 4 for "║  ║"
 		// Prevent negative padding if content is too long
 		const actualPadding = Math.max(0, padding);
 		return (
-			theme.primary("║") +
+			theme.primary("║ ") +
 			content +
 			" ".repeat(actualPadding) +
-			theme.primary("║")
+			theme.primary(" ║")
 		);
 	},
 
-	divider: (): string => {
-		return theme.muted("─".repeat(60));
+	centeredRow: (content: string, width?: number): string => {
+		const boxWidth = width ?? box.WIDTH;
+		// Strip ANSI escape codes to get the actual visual length
+		const strippedLength = content.replace(
+			// biome-ignore lint/suspicious/noControlCharactersInRegex: ANSI escape codes
+			/\x1b\[[0-9;]*m/g,
+			"",
+		).length;
+		const totalPadding = boxWidth - strippedLength - 4; // 4 for "║  ║"
+		// Prevent negative padding if content is too long
+		const actualPadding = Math.max(0, totalPadding);
+		const leftPad = Math.floor(actualPadding / 2);
+		const rightPad = actualPadding - leftPad;
+		return (
+			theme.primary("║ ") +
+			" ".repeat(leftPad) +
+			content +
+			" ".repeat(rightPad) +
+			theme.primary(" ║")
+		);
+	},
+
+	divider: (width?: number): string => {
+		const dividerWidth = width ?? 60;
+		return theme.muted("─".repeat(dividerWidth));
 	},
 };

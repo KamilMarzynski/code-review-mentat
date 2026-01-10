@@ -3,13 +3,17 @@ import { ui } from "../ui/logger";
 import { box, emoji, theme } from "../ui/theme";
 
 export function displayHeader(): void {
+	const headerWidth = 60; // Custom width for the header
 	ui.space();
-	ui.log(box.top());
-	ui.log(box.row(theme.accent("            CODE REVIEW MENTAT            ")));
+	ui.log(box.top(undefined, headerWidth));
+	ui.log(box.centeredRow(theme.accent("CODE REVIEW MENTAT"), headerWidth));
 	ui.log(
-		box.row(theme.muted(' "It is by will alone I set my mind in motion"')),
+		box.centeredRow(
+			theme.muted('"It is by will alone I set my mind in motion"'),
+			headerWidth,
+		),
 	);
-	ui.log(box.bottom());
+	ui.log(box.bottom(headerWidth));
 	ui.space();
 }
 

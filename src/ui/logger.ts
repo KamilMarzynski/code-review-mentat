@@ -5,21 +5,12 @@ import { box, theme } from "./theme";
 export { isCancel } from "@clack/prompts";
 
 // Reasoning step counter
-let stepCounter = 0;
 
 export class UILogger {
-	/**
-	 * Reset step counter (call at start of agent execution)
-	 */
-	resetSteps() {
-		stepCounter = 0;
-	}
-
 	/**
 	 * Log a reasoning step
 	 */
 	step(message: string) {
-		stepCounter++;
 		console.log("");
 		console.log(`${theme.accent(`  ${message}`)}`);
 	}
@@ -61,7 +52,6 @@ export class UILogger {
 	section(title: string) {
 		console.log("");
 		console.log(theme.primary(`━━━ ${title} ━━━`));
-		this.resetSteps();
 	}
 
 	/**
