@@ -19,7 +19,7 @@ export async function promptForRemote(
 	});
 
 	if (clack.isCancel(selectedRemote)) {
-		clack.cancel(theme.error("Operation cancelled by user."));
+		clack.cancel(theme.error("Computation interrupted."));
 		process.exit(0);
 	}
 
@@ -37,7 +37,7 @@ export async function promptForPR(prs: PullRequest[]): Promise<PullRequest> {
 	});
 
 	if (clack.isCancel(pickedPr)) {
-		clack.cancel(theme.error("Operation cancelled by user."));
+		clack.cancel(theme.error("Computation interrupted."));
 		process.exit(0);
 	}
 
@@ -57,16 +57,16 @@ export async function promptForCacheStrategy(
 
 		if (meta && !commitChanged) {
 			clack.log.success(
-				theme.success("Deep context already computed. ") +
+				theme.success("Deep context already synthesized. ") +
 					theme.muted(
-						`(gathered ${new Date(meta.gatheredAt).toLocaleString()})`,
+						`(computed ${new Date(meta.gatheredAt).toLocaleString()})`,
 					),
 			);
 			// Use cached context, no need to gather again
 			gatherContext = false;
 		} else {
 			clack.log.warn(
-				`${theme.warning("⚡ New computations detected in the pull request")}\n${theme.muted(`   Previous: ${meta?.gatheredFromCommit?.substring(0, 8)}`)}\n${theme.muted(`   Current:  ${currentHash?.substring(0, 8)}`)}`,
+				`${theme.warning("⚡ Pattern shift detected in pull request")}\n${theme.muted(`   Previous: ${meta?.gatheredFromCommit?.substring(0, 8)}`)}\n${theme.muted(`   Current:  ${currentHash?.substring(0, 8)}`)}`,
 			);
 
 			const choice = await clack.select({
@@ -74,18 +74,18 @@ export async function promptForCacheStrategy(
 				options: [
 					{
 						value: "use",
-						label: theme.success("⚡ Use existing deep context"),
+						label: theme.success("⚡ Use existing computation"),
 						hint: "Instant analysis (no API calls)",
 					},
 					{
 						value: "refresh",
-						label: theme.warning("🔄 Recompute deep context"),
-						hint: "Fresh data from Jira/Confluence (costs credits)",
+						label: theme.warning("🔄 Recompute data synthesis"),
+						hint: "Fresh data synthesis from Jira/Confluence (costs credits)",
 					},
 					{
 						value: "skip",
-						label: theme.muted("⏭  Skip context gathering"),
-						hint: "Review code only, no external intelligence",
+						label: theme.muted("⏭  Skip context synthesis"),
+						hint: "Code analysis only, no external data",
 					},
 				],
 			});
@@ -103,7 +103,9 @@ export async function promptForCacheStrategy(
 		}
 	} else {
 		const shouldGather = await clack.confirm({
-			message: theme.accent("Gather deep context from Jira and Confluence?"),
+			message: theme.accent(
+				"Synthesize deep context from Jira and Confluence?",
+			),
 			initialValue: true,
 		});
 
@@ -183,7 +185,7 @@ export async function promptCommentAction(): Promise<
 			{
 				value: "fix",
 				label: "🔧 Fix with Claude",
-				hint: "Let Claude Code plan and implement a fix",
+				hint: "Plan and implement a fix",
 			},
 			{
 				value: "accept",

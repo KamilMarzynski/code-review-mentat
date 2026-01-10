@@ -22,7 +22,7 @@ export class CLIOrchestrator {
 
 	public async run(): Promise<void> {
 		displayHeader();
-		ui.intro(theme.primary("Initiating Mentat analysis protocol..."));
+		ui.intro(theme.computation("Mentat analysis protocol initiated"));
 
 		// Check for uncommitted changes before proceeding
 		const dirtyWorkspace = await this.prWorkflow.checkWorkspaceClean();
@@ -91,13 +91,13 @@ export class CLIOrchestrator {
 
 			if (contextHasError || reviewHasError) {
 				ui.outro(
-					theme.warning("⚠ Mentat completed with errors. ") +
-						theme.muted("Please review the output carefully."),
+					theme.warning("⚠ Computation completed with errors. ") +
+						theme.muted("Review the output above for details."),
 				);
 			} else {
 				ui.outro(
-					theme.primary("⚡ Mentat computation complete. ") +
-						theme.muted("The analysis is now in your hands."),
+					theme.computation("⚡ Computation complete. ") +
+						theme.muted("Assessment data synthesized."),
 				);
 			}
 

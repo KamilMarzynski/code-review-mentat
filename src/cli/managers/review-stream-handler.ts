@@ -250,10 +250,8 @@ export class ReviewStreamHandler {
 					this.ui.warn("Starting review with degraded context");
 				}
 
-				this.ui.section("Code Review Analysis");
-				reviewSpinner.start(
-					theme.accent("Initializing Claude Code in read-only mode"),
-				);
+				this.ui.section("Pattern Analysis");
+				reviewSpinner.start(theme.accent("Entering analytical state"));
 				break;
 
 			case "review_thinking": {
@@ -301,7 +299,7 @@ export class ReviewStreamHandler {
 					reviewSpinner.stop(
 						theme.success(`✓ ${event.commentCount} ${commentLabel} found`),
 					);
-					this.ui.sectionComplete("Analysis complete");
+					this.ui.sectionComplete("Computation complete");
 					currentPhase.value = Phase.COMPLETE;
 				}
 				break;

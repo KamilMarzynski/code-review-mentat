@@ -64,7 +64,7 @@ export class PRWorkflowManager {
 
 		this.ui.error(
 			theme.error(
-				"✗ Mentat requires a clean working directory to safely switch branches.",
+				"✗ Computational integrity requires a clean workspace to safely switch branches.",
 			),
 		);
 		this.ui.space();

@@ -91,9 +91,6 @@ export class ClaudeQueryExecutor {
 
 		try {
 			for await (const msg of q) {
-				// Debug log every message
-				// console.debug("Msg from claude code", JSON.stringify(msg, null, 2));
-
 				// Detect errors early
 				if (!errorDetected) {
 					errorDetected = this.detectError(msg);
@@ -229,9 +226,6 @@ export class ClaudeQueryExecutor {
 
 		try {
 			for await (const msg of q) {
-				// Debug log every message
-				// console.debug("Msg from claude code", JSON.stringify(msg, null, 2));
-
 				// Detect errors early
 				if (!errorDetected) {
 					errorDetected = this.detectError(msg);

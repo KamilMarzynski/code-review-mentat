@@ -25,6 +25,12 @@ export const emoji = {
 	pending: "⏳",
 	lightning: "⚡",
 
+	// Mentat-specific (computational analysis)
+	computation: "⚙️",
+	synthesis: "🧩",
+	pattern: "〰️",
+	data: "💾",
+
 	// Arrows
 	arrow: "→",
 	pipe: "│",
@@ -40,6 +46,10 @@ export const theme = {
 	error: chalk.hex("#E74C3C"), // Red
 	muted: chalk.gray,
 	dim: chalk.dim,
+	// Mentat-specific variants
+	computation: chalk.hex("#D4AF37"), // Gold for computation/analysis
+	data: chalk.hex("#8B7355"), // Sand for data references
+	insight: chalk.hex("#4A90E2"), // Spice blue for insights/findings
 };
 
 // Badge generators for consistent UI elements

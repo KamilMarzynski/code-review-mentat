@@ -19,9 +19,7 @@ export function displayHeader(): void {
 
 export function displayContext(context: string): void {
 	ui.space();
-	ui.section(`${emoji.brain} Deep Context`);
-	ui.space();
-
+	ui.section(`${emoji.computation} Deep Context`);
 	if (
 		context &&
 		context !== "No additional context found." &&

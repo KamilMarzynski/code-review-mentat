@@ -25,11 +25,11 @@ export class CommentFormatter {
 		const byConfidence = this.groupByConfidence(comments);
 
 		this.ui.space();
-		this.ui.log(box.top("REVIEW SUMMARY"));
+		this.ui.log(box.top("COMPUTATIONAL ASSESSMENT"));
 		this.ui.space();
 
 		// Severity breakdown
-		this.ui.log(theme.secondary(`  ${emoji.chart} By Severity:`));
+		this.ui.log(theme.secondary(`  ${emoji.chart} Severity Assessment:`));
 		this.ui.log(
 			theme.error(`     ${emoji.risk} Risks:       ${bySeverity.risk || 0}`),
 		);
@@ -50,7 +50,7 @@ export class CommentFormatter {
 		// Confidence breakdown (if any comments have confidence)
 		if (byConfidence.high || byConfidence.medium || byConfidence.low) {
 			this.ui.space();
-			this.ui.log(theme.secondary(`  ${emoji.target} By Confidence:`));
+			this.ui.log(theme.secondary(`  ${emoji.target} Probability Levels:`));
 			if (byConfidence.high) {
 				this.ui.log(
 					theme.success(
@@ -73,7 +73,7 @@ export class CommentFormatter {
 
 		if (hotspots.length > 0) {
 			this.ui.space();
-			this.ui.log(theme.secondary(`  ${emoji.fire} Hotspot Files:`));
+			this.ui.log(theme.secondary(`  ${emoji.pattern} Pattern Concentration:`));
 			for (const [file, count] of hotspots) {
 				// Defensive: ensure file and count exist
 				if (!file || count === undefined) continue;
