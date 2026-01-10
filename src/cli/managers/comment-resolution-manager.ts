@@ -17,29 +17,70 @@ export class CommentResolutionManager {
 		private ui: UILogger,
 	) {}
 
-	public async checkPendingComments(pr: PullRequest): Promise<boolean> {
+	public async checkPendingComments(
+		pr: PullRequest,
+	): Promise<"handle" | "review" | "none"> {
 		const prKey = getPRKey(pr);
 		const commentsBefore = await this.cache.getComments(prKey);
 
 		if (commentsBefore.length === 0) {
-			return false;
+			return "none";
 		}
-
-		clack.log.info(
-			theme.secondary("This pull request was previously reviewed. "),
-		);
 
 		const pendingComments = commentsBefore.filter(
 			(c) => c.status === "pending" || !c.status,
 		);
 
+		// Case 1: All comments are resolved
 		if (pendingComments.length === 0) {
-			return false;
+			const resolvedSummary = {
+				accepted: commentsBefore.filter((c) => c.status === "accepted").length,
+				fixed: commentsBefore.filter((c) => c.status === "fixed").length,
+				rejected: commentsBefore.filter((c) => c.status === "rejected").length,
+			};
+
+			clack.log.success(
+				theme.success(
+					`✓ All ${commentsBefore.length} comment(s) from previous review are resolved.`,
+				),
+			);
+
+			// Show resolution summary
+			const summaryParts: string[] = [];
+			if (resolvedSummary.fixed > 0) {
+				summaryParts.push(`${resolvedSummary.fixed} fixed`);
+			}
+			if (resolvedSummary.accepted > 0) {
+				summaryParts.push(`${resolvedSummary.accepted} accepted`);
+			}
+			if (resolvedSummary.rejected > 0) {
+				summaryParts.push(`${resolvedSummary.rejected} rejected`);
+			}
+
+			if (summaryParts.length > 0) {
+				clack.log.info(theme.muted(`  ${summaryParts.join(", ")}`));
+			}
+
+			const shouldContinue = await clack.confirm({
+				message: "Run a new review?",
+				initialValue: false,
+			});
+
+			if (clack.isCancel(shouldContinue) || !shouldContinue) {
+				clack.outro(
+					theme.success("✓ Previous review complete. ") +
+						theme.muted("Run the tool again when ready for a new review."),
+				);
+				process.exit(0);
+			}
+
+			return "review";
 		}
 
+		// Case 2: Has pending comments
 		clack.log.info(
 			theme.warning(
-				`There are ${pendingComments.length} unresolved comment(s) from the last review session.`,
+				`There are ${pendingComments.length} unresolved comment(s) from the last review.`,
 			),
 		);
 
@@ -63,7 +104,7 @@ export class CommentResolutionManager {
 			hasNewCommits,
 		);
 
-		return action === "handle";
+		return action;
 	}
 
 	public async handleComments(

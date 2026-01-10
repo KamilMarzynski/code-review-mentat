@@ -48,18 +48,18 @@ export class CLIOrchestrator {
 				selectedPr,
 			);
 
-			// Step 7: Check for pending comments from previous review
-			const shouldHandleComments =
+			// Step 7: Determine cache/context strategy first (natural order: data before actions)
+			const cacheConfig =
+				await this.reviewHandler.determineCacheStrategy(selectedPr);
+
+			// Step 8: Check for pending comments from previous review
+			const commentAction =
 				await this.commentResolution.checkPendingComments(selectedPr);
 
-			if (shouldHandleComments) {
+			if (commentAction === "handle") {
 				await this.handleComments(getPRKey(selectedPr));
 				return;
 			}
-
-			// Step 8: Determine cache/context strategy
-			const cacheConfig =
-				await this.reviewHandler.determineCacheStrategy(selectedPr);
 
 			// Step 9: Process review stream
 			const { contextHasError, reviewHasError } =

@@ -149,7 +149,7 @@ export class PRWorkflowManager {
 			pr.source.commitHash,
 		);
 
-		s4.stop(theme.success(`✓ Analyzed ${editedFiles.length} file(s)`));
+		s4.stop();
 
 		if (editedFiles.length > 0) {
 			const displayCount = Math.min(3, editedFiles.length);
@@ -184,7 +184,7 @@ export class PRWorkflowManager {
 		s5.start(theme.muted("Retrieving commit chronology"));
 
 		const commitMessages = await provider.fetchCommits(pr);
-		s5.stop(theme.success(`✓ Processed ${commitMessages.length} commit(s)`));
+		s5.stop();
 
 		return commitMessages;
 	}

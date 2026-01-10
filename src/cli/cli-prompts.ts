@@ -128,14 +128,14 @@ export async function promptForPendingCommentsAction(
 			{
 				value: "handle",
 				label: "🔧 Handle pending comments",
-				hint: `Resolve ${pendingCount} pending comment(s)`,
+				hint: `Review and resolve ${pendingCount} pending comment(s)`,
 			},
 			{
 				value: "review",
-				label: "🔄 New review",
+				label: "🔄 Run new review",
 				hint: hasNewCommits
-					? "Recommended: Review new changes"
-					: "Perform fresh review",
+					? "Recommended: New commits detected"
+					: "Perform fresh review (you'll choose context strategy next)",
 			},
 		],
 	});
