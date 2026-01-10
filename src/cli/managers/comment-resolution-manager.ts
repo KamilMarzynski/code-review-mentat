@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import * as clack from "@clack/prompts";
 import type LocalCache from "../../cache/local-cache";
-import type { PullRequest } from "../../providers/types";
+import { type PullRequest, getPRKey } from "../../providers/types";
 import type {
 	ReviewComment,
 	ReviewCommentStatus,
@@ -18,7 +18,7 @@ export class CommentResolutionManager {
 	) {}
 
 	public async checkPendingComments(pr: PullRequest): Promise<boolean> {
-		const prKey = `${pr.source.name}|${pr.target.name}`;
+		const prKey = getPRKey(pr);
 		const commentsBefore = await this.cache.getComments(prKey);
 
 		if (commentsBefore.length === 0) {

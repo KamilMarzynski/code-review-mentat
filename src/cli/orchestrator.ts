@@ -1,5 +1,6 @@
 import * as clack from "@clack/prompts";
 import type LocalCache from "../cache/local-cache";
+import { getPRKey } from "../providers/types";
 import { theme } from "../ui/theme";
 import { promptToResolveComments } from "./cli-prompts";
 import { displayHeader } from "./display";
@@ -52,9 +53,7 @@ export class CLIOrchestrator {
 				await this.commentResolution.checkPendingComments(selectedPr);
 
 			if (shouldHandleComments) {
-				await this.handleComments(
-					`${selectedPr.source.name}|${selectedPr.target.name}`,
-				);
+				await this.handleComments(getPRKey(selectedPr));
 				return;
 			}
 
@@ -74,6 +73,14 @@ export class CLIOrchestrator {
 
 			console.log(""); // Spacing
 
+			// Check for comments to display summary
+			const comments = await this.cache.getComments(getPRKey(selectedPr));
+
+			// Display review summary if comments exist
+			if (comments.length > 0 && !reviewHasError) {
+				this.commentDisplay.displayReviewSummary(comments);
+			}
+
 			if (contextHasError || reviewHasError) {
 				clack.outro(
 					theme.warning("⚠ Mentat completed with errors. ") +
@@ -87,9 +94,6 @@ export class CLIOrchestrator {
 			}
 
 			// Check for pending comments to handle
-			const comments = await this.cache.getComments(
-				`${selectedPr.source.name}|${selectedPr.target.name}`,
-			);
 			const pendingComments = comments.filter(
 				(c) => c.status === "pending" || !c.status,
 			);
@@ -108,9 +112,7 @@ export class CLIOrchestrator {
 					return;
 				}
 
-				await this.handleComments(
-					`${selectedPr.source.name}|${selectedPr.target.name}`,
-				);
+				await this.handleComments(getPRKey(selectedPr));
 				return;
 			}
 		} catch (error) {

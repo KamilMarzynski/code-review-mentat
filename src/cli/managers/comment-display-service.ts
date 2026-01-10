@@ -9,6 +9,104 @@ import { theme } from "../../ui/theme";
 export class CommentDisplayService {
 	constructor(private ui: UILogger) {}
 
+	public displayReviewSummary(comments: ReviewComment[]): void {
+		if (comments.length === 0) {
+			return;
+		}
+
+		const byFile = this.groupByFile(comments);
+		const bySeverity = this.groupBySeverity(comments);
+		const byConfidence = this.groupByConfidence(comments);
+
+		console.log("");
+		console.log(theme.primary("╔═══ REVIEW SUMMARY ═══╗"));
+		console.log("");
+
+		// Severity breakdown
+		console.log(theme.secondary("  📊 By Severity:"));
+		console.log(theme.error(`     🔴 Risks:       ${bySeverity.risk || 0}`));
+		console.log(theme.warning(`     🟠 Issues:      ${bySeverity.issue || 0}`));
+		console.log(
+			theme.accent(`     🔵 Suggestions: ${bySeverity.suggestion || 0}`),
+		);
+		console.log(theme.muted(`     ⚪ Nits:        ${bySeverity.nit || 0}`));
+
+		// Confidence breakdown (if any comments have confidence)
+		if (byConfidence.high || byConfidence.medium || byConfidence.low) {
+			console.log("");
+			console.log(theme.secondary("  🎯 By Confidence:"));
+			if (byConfidence.high) {
+				console.log(
+					theme.success(`     ✓ High:   ${byConfidence.high} (verified)`),
+				);
+			}
+			if (byConfidence.medium) {
+				console.log(theme.accent(`     ○ Medium: ${byConfidence.medium}`));
+			}
+			if (byConfidence.low) {
+				console.log(theme.muted(`     ? Low:    ${byConfidence.low}`));
+			}
+		}
+
+		// Hotspot files (top 5)
+		const hotspots = Object.entries(byFile)
+			.sort((a, b) => b[1] - a[1])
+			.slice(0, 5);
+
+		if (hotspots.length > 0) {
+			console.log("");
+			console.log(theme.secondary("  🔥 Hotspot Files:"));
+			for (const [file, count] of hotspots) {
+				const countLabel = count === 1 ? "comment" : "comments";
+				console.log(
+					theme.muted(
+						`     ${count}× ${file} ${theme.dim(`(${count} ${countLabel})`)}`,
+					),
+				);
+			}
+		}
+
+		console.log("");
+		console.log(theme.primary("╚═════════════════════╝"));
+		console.log("");
+	}
+
+	private groupByFile(comments: ReviewComment[]): Record<string, number> {
+		const grouped: Record<string, number> = {};
+		for (const comment of comments) {
+			grouped[comment.file] = (grouped[comment.file] || 0) + 1;
+		}
+		return grouped;
+	}
+
+	private groupBySeverity(comments: ReviewComment[]): Record<string, number> {
+		const grouped: Record<string, number> = {
+			risk: 0,
+			issue: 0,
+			suggestion: 0,
+			nit: 0,
+		};
+		for (const comment of comments) {
+			const severity = comment.severity || "suggestion";
+			grouped[severity] = (grouped[severity] || 0) + 1;
+		}
+		return grouped;
+	}
+
+	private groupByConfidence(comments: ReviewComment[]): Record<string, number> {
+		const grouped: Record<string, number> = {
+			high: 0,
+			medium: 0,
+			low: 0,
+		};
+		for (const comment of comments) {
+			if (comment.confidence) {
+				grouped[comment.confidence] = (grouped[comment.confidence] || 0) + 1;
+			}
+		}
+		return grouped;
+	}
+
 	public async displayCommentWithContext(
 		comment: ReviewComment,
 	): Promise<void> {
@@ -65,16 +163,48 @@ export class CommentDisplayService {
 			clack.log.warn(theme.warning("Could not read file to display context"));
 		}
 
-		// Comment details
+		// Comment details with enhanced badges
 		console.log("");
-		clack.log.info(
-			theme.secondary(`📝 ${comment.severity || "info"}`.toUpperCase()),
+		const severityBadge = this.getSeverityBadge(
+			comment.severity || "suggestion",
 		);
+		clack.log.info(severityBadge);
+
+		// Confidence indicator
+		if (comment.confidence) {
+			const confidenceBadge = this.getConfidenceBadge(comment.confidence);
+			clack.log.step(confidenceBadge);
+		}
+
+		// Verification info
+		if (comment.verifiedBy) {
+			clack.log.step(theme.success(`✓ Verified: ${comment.verifiedBy}`));
+		}
+
 		clack.log.step(theme.primary(comment.message));
 
 		if (comment.rationale) {
 			clack.log.step(theme.dim(`Why: ${comment.rationale}`));
 		}
+	}
+
+	private getSeverityBadge(severity: string): string {
+		const badges: Record<string, string> = {
+			risk: theme.error("🔴 RISK"),
+			issue: theme.warning("🟠 ISSUE"),
+			suggestion: theme.accent("🔵 SUGGESTION"),
+			nit: theme.muted("⚪ NIT"),
+		};
+		return badges[severity] || theme.muted("ℹ️ INFO");
+	}
+
+	private getConfidenceBadge(confidence: string): string {
+		const badges: Record<string, string> = {
+			high: theme.success("🎯 High Confidence"),
+			medium: theme.accent("○ Medium Confidence"),
+			low: theme.muted("? Low Confidence"),
+		};
+		return badges[confidence] || "";
 	}
 
 	public async promptOptionalNotes(): Promise<string | undefined> {

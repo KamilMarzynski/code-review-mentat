@@ -47,3 +47,10 @@ export interface BranchInfo {
 	name: string;
 	commitHash: string;
 }
+
+/**
+ * Utility function to generate a consistent PR key for caching and identification
+ */
+export function getPRKey(pr: PullRequest): string {
+	return `${pr.source.name}|${pr.target.name}`;
+}
