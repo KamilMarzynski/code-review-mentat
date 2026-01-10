@@ -22,9 +22,17 @@ if (!PATH_TO_CLAUDE) {
 }
 
 const main = async () => {
-	// Initialize MCP client and tools
-	const mcpClient = createMCPClient();
-	const tools = await getMCPTools(mcpClient);
+	// Start MCP initialization in background (don't await yet)
+	const mcpInitPromise = (async () => {
+		const mcpClient = createMCPClient();
+		const tools = await getMCPTools(mcpClient);
+		return { mcpClient, tools };
+	})();
+
+	// Initialize infrastructure services (can happen in parallel with MCP)
+	const git = new GitOperations();
+	const cache = new LocalCache();
+	const ui = new UILogger();
 
 	// Initialize LangChain model
 	const model = new ChatAnthropic({
@@ -32,11 +40,13 @@ const main = async () => {
 		temperature: 0,
 	});
 
-	// Create LangChain agent for context gathering
-	const contextGathererAgent = createAgent({
-		model,
-		tools,
-		systemPrompt: `You are a code review context specialist.
+	// Factory function to lazily create context gatherer when needed
+	const createContextGatherer = async () => {
+		const { tools } = await mcpInitPromise;
+		const contextGathererAgent = createAgent({
+			model,
+			tools,
+			systemPrompt: `You are a code review context specialist.
 
 ## Your Goal
 Gather ONLY information that will help an AI perform code review. Focus on:
@@ -60,17 +70,13 @@ Provide a structured summary:
 - Maximum 5 tool calls
 - Skip information already in the PR description
 - Focus on REQUIREMENTS, not implementation details`,
-	});
-
-	// Initialize infrastructure services
-	const git = new GitOperations();
-	const cache = new LocalCache();
-	const ui = new UILogger();
+		});
+		return new ContextGatherer(contextGathererAgent);
+	};
 
 	// Initialize review services
-	const contextGatherer = new ContextGatherer(contextGathererAgent);
 	const codeReviewer = new CodeReviewer(PATH_TO_CLAUDE);
-	const reviewService = new ReviewService(contextGatherer, codeReviewer);
+	const reviewService = new ReviewService(createContextGatherer, codeReviewer);
 	const commentFixer = new CommentFixer(PATH_TO_CLAUDE);
 
 	// Provider factory function
@@ -98,11 +104,27 @@ Provide a structured summary:
 		cache,
 	);
 
+	let mcpClient: Awaited<typeof mcpInitPromise>["mcpClient"] | null = null;
+
 	try {
 		await orchestrator.run();
 	} finally {
-		// Close MCP client to allow process to exit
-		await mcpClient.close();
+		// Close MCP client if it was initialized
+		try {
+			const { mcpClient: client } = await Promise.race([
+				mcpInitPromise,
+				new Promise<never>((_, reject) =>
+					setTimeout(() => reject(new Error("timeout")), 100),
+				),
+			]);
+			mcpClient = client;
+		} catch {
+			// MCP client not ready or timed out, nothing to close
+		}
+
+		if (mcpClient) {
+			await mcpClient.close();
+		}
 	}
 };
 

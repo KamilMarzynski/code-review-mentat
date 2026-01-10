@@ -15,12 +15,20 @@ import {
 
 export class ReviewService {
 	private graph;
+	private contextGathererPromise: Promise<ContextGatherer> | null = null;
 
 	constructor(
-		private contextGatherer: ContextGatherer,
+		private createContextGatherer: () => Promise<ContextGatherer>,
 		private codeReviewer: CodeReviewer,
 	) {
 		this.graph = this.buildGraph();
+	}
+
+	private async getContextGatherer(): Promise<ContextGatherer> {
+		if (!this.contextGathererPromise) {
+			this.contextGathererPromise = this.createContextGatherer();
+		}
+		return this.contextGathererPromise;
 	}
 
 	async *streamReview(
@@ -69,8 +77,10 @@ export class ReviewService {
 		return new StateGraph(reviewState)
 			.addNode(
 				"contextSearchCall",
-				(state: ReviewState, config: LangGraphRunnableConfig) =>
-					this.contextGatherer.gather(state, config),
+				async (state: ReviewState, config: LangGraphRunnableConfig) => {
+					const gatherer = await this.getContextGatherer();
+					return gatherer.gather(state, config);
+				},
 			)
 			.addNode(
 				"reviewCall",
