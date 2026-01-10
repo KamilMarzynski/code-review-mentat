@@ -1,5 +1,5 @@
 import * as clack from "@clack/prompts";
-import { theme } from "./theme";
+import { box, theme } from "./theme";
 
 // Reasoning step counter
 let stepCounter = 0;
@@ -102,6 +102,56 @@ export class UILogger {
 	 */
 	error(message: string) {
 		clack.log.error(theme.error(message));
+	}
+
+	/**
+	 * Add vertical spacing
+	 */
+	space() {
+		console.log("");
+	}
+
+	/**
+	 * Display a horizontal divider
+	 */
+	divider() {
+		console.log(box.divider());
+	}
+
+	/**
+	 * Display a header box
+	 */
+	header(title: string, subtitle?: string) {
+		console.log("");
+		console.log(box.top());
+		console.log(box.row(theme.accent(`              ${title}              `)));
+		if (subtitle) {
+			console.log(box.row(theme.muted(`  ${subtitle}  `)));
+		}
+		console.log(box.bottom());
+		console.log("");
+	}
+
+	/**
+	 * Display a titled box section
+	 */
+	boxSection(title: string, content?: string[]) {
+		console.log("");
+		console.log(box.top(title));
+		if (content) {
+			for (const line of content) {
+				console.log(`  ${line}`);
+			}
+		}
+		console.log(box.bottom());
+		console.log("");
+	}
+
+	/**
+	 * Log a simple message (for migration from console.log)
+	 */
+	log(message: string) {
+		console.log(message);
 	}
 }
 

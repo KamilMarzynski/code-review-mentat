@@ -1,32 +1,25 @@
 import * as clack from "@clack/prompts";
 import type { ReviewComment } from "../review/types";
-import { theme } from "../ui/theme";
+import { box, theme } from "../ui/theme";
+import { ui } from "../ui/logger";
 
 export function displayHeader(): void {
-	console.log("");
-	console.log(
-		theme.primary("╔═════════════════════════════════════════════════════╗"),
+	ui.space();
+	ui.log(box.top());
+	ui.log(
+		box.row(theme.accent("              CODE REVIEW MENTAT              ")),
 	);
-	console.log(
-		theme.primary("║") +
-			theme.accent("                CODE REVIEW MENTAT                   ") +
-			theme.primary("║"),
+	ui.log(
+		box.row(theme.muted('  "It is by will alone I set my mind in motion"  ')),
 	);
-	console.log(
-		theme.primary("║") +
-			theme.muted('    "It is by will alone I set my mind in motion"    ') +
-			theme.primary("║"),
-	);
-	console.log(
-		theme.primary("╚═════════════════════════════════════════════════════╝"),
-	);
-	console.log("");
+	ui.log(box.bottom());
+	ui.space();
 }
 
 export function displayContext(context: string): void {
-	console.log("");
-	console.log(theme.primary("━━━ 🧠 Deep Context ━━━"));
-	console.log("");
+	ui.space();
+	ui.section("🧠 Deep Context");
+	ui.space();
 
 	if (
 		context &&
@@ -38,44 +31,42 @@ export function displayContext(context: string): void {
 		for (const line of contextLines) {
 			if (line.trim().startsWith("#")) {
 				// Headers in gold
-				console.log(theme.primary(line));
+				ui.log(theme.primary(line));
 			} else if (line.trim().startsWith("**")) {
 				// Bold text in secondary color
-				console.log(theme.secondary(line));
+				ui.log(theme.secondary(line));
 			} else if (line.trim().length > 0) {
 				// Regular text muted
-				console.log(theme.muted(line));
+				ui.log(theme.muted(line));
 			} else {
 				// Preserve empty lines
-				console.log("");
+				ui.space();
 			}
 		}
 	} else {
-		console.log(theme.muted("  No additional context gathered."));
+		ui.log(theme.muted("  No additional context gathered."));
 	}
 
-	console.log("");
+	ui.space();
 }
 
 export function displayComments(comments: ReviewComment[]): void {
 	if (comments && comments.length > 0) {
-		clack.log.warn(theme.warning(`⚠ Found ${comments.length} observation(s):`));
+		ui.warn(`⚠ Found ${comments.length} observation(s):`);
 
 		comments.forEach((comment, i) => {
-			console.log(
+			ui.log(
 				theme.muted(`  ${i + 1}. `) +
 					theme.secondary(`${comment.file}:${comment.line || "?"}`) +
 					theme.muted(` [${comment.severity?.toUpperCase()}]`),
 			);
-			console.log(
+			ui.log(
 				theme.muted(
 					`     ${comment.message.substring(0, 80)}${comment.message.length > 80 ? "..." : ""}`,
 				),
 			);
 		});
 	} else {
-		clack.log.success(
-			theme.success("✓ No issues detected. Code quality acceptable."),
-		);
+		ui.success("✓ No issues detected. Code quality acceptable.");
 	}
 }

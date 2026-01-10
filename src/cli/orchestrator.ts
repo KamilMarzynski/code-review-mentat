@@ -99,8 +99,6 @@ export class CLIOrchestrator {
 			);
 
 			if (pendingComments.length > 0) {
-				console.log(""); // Spacing
-
 				const shouldResolve = await promptToResolveComments();
 
 				if (!shouldResolve) {

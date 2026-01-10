@@ -4,7 +4,7 @@ import { promisify } from "node:util";
 import * as clack from "@clack/prompts";
 import type { ReviewComment } from "../../review/types";
 import type { UILogger } from "../../ui/logger";
-import { theme } from "../../ui/theme";
+import { badges, box, theme } from "../../ui/theme";
 
 export class CommentDisplayService {
 	constructor(private ui: UILogger) {}
@@ -18,33 +18,33 @@ export class CommentDisplayService {
 		const bySeverity = this.groupBySeverity(comments);
 		const byConfidence = this.groupByConfidence(comments);
 
-		console.log("");
-		console.log(theme.primary("╔═══ REVIEW SUMMARY ═══╗"));
-		console.log("");
+		this.ui.space();
+		this.ui.log(box.top("REVIEW SUMMARY"));
+		this.ui.space();
 
 		// Severity breakdown
-		console.log(theme.secondary("  📊 By Severity:"));
-		console.log(theme.error(`     🔴 Risks:       ${bySeverity.risk || 0}`));
-		console.log(theme.warning(`     🟠 Issues:      ${bySeverity.issue || 0}`));
-		console.log(
+		this.ui.log(theme.secondary("  📊 By Severity:"));
+		this.ui.log(theme.error(`     🔴 Risks:       ${bySeverity.risk || 0}`));
+		this.ui.log(theme.warning(`     🟠 Issues:      ${bySeverity.issue || 0}`));
+		this.ui.log(
 			theme.accent(`     🔵 Suggestions: ${bySeverity.suggestion || 0}`),
 		);
-		console.log(theme.muted(`     ⚪ Nits:        ${bySeverity.nit || 0}`));
+		this.ui.log(theme.muted(`     ⚪ Nits:        ${bySeverity.nit || 0}`));
 
 		// Confidence breakdown (if any comments have confidence)
 		if (byConfidence.high || byConfidence.medium || byConfidence.low) {
-			console.log("");
-			console.log(theme.secondary("  🎯 By Confidence:"));
+			this.ui.space();
+			this.ui.log(theme.secondary("  🎯 By Confidence:"));
 			if (byConfidence.high) {
-				console.log(
+				this.ui.log(
 					theme.success(`     ✓ High:   ${byConfidence.high} (verified)`),
 				);
 			}
 			if (byConfidence.medium) {
-				console.log(theme.accent(`     ○ Medium: ${byConfidence.medium}`));
+				this.ui.log(theme.accent(`     ○ Medium: ${byConfidence.medium}`));
 			}
 			if (byConfidence.low) {
-				console.log(theme.muted(`     ? Low:    ${byConfidence.low}`));
+				this.ui.log(theme.muted(`     ? Low:    ${byConfidence.low}`));
 			}
 		}
 
@@ -54,11 +54,11 @@ export class CommentDisplayService {
 			.slice(0, 5);
 
 		if (hotspots.length > 0) {
-			console.log("");
-			console.log(theme.secondary("  🔥 Hotspot Files:"));
+			this.ui.space();
+			this.ui.log(theme.secondary("  🔥 Hotspot Files:"));
 			for (const [file, count] of hotspots) {
 				const countLabel = count === 1 ? "comment" : "comments";
-				console.log(
+				this.ui.log(
 					theme.muted(
 						`     ${count}× ${file} ${theme.dim(`(${count} ${countLabel})`)}`,
 					),
@@ -66,9 +66,9 @@ export class CommentDisplayService {
 			}
 		}
 
-		console.log("");
-		console.log(theme.primary("╚═════════════════════╝"));
-		console.log("");
+		this.ui.space();
+		this.ui.log(box.bottom());
+		this.ui.space();
 	}
 
 	private groupByFile(comments: ReviewComment[]): Record<string, number> {
@@ -110,10 +110,10 @@ export class CommentDisplayService {
 	public async displayCommentWithContext(
 		comment: ReviewComment,
 	): Promise<void> {
-		console.log("");
+		this.ui.space();
 
 		// File info
-		clack.log.info(theme.secondary(`📄 ${comment.file}`));
+		this.ui.info(theme.secondary(`📄 ${comment.file}`));
 
 		// Line info
 		if (comment.startLine && comment.endLine) {
@@ -138,8 +138,8 @@ export class CommentDisplayService {
 			const displayStart = Math.max(0, startLine - contextBefore);
 			const displayEnd = Math.min(lines.length, endLine + contextAfter);
 
-			console.log("");
-			clack.log.info(theme.dim("Code:"));
+			this.ui.space();
+			this.ui.info(theme.dim("Code:"));
 
 			for (let i = displayStart; i < displayEnd; i++) {
 				const lineNum = i + 1;
@@ -157,22 +157,20 @@ export class CommentDisplayService {
 				const numStr = lineNum.toString().padStart(4, " ");
 				const lineColor = isProblematic ? theme.error : theme.dim;
 
-				console.log(`${prefix}${numStr} │ ${lineColor(lineContent)}`);
+				this.ui.log(`${prefix}${numStr} │ ${lineColor(lineContent)}`);
 			}
 		} catch (_error) {
-			clack.log.warn(theme.warning("Could not read file to display context"));
+			this.ui.warn("Could not read file to display context");
 		}
 
 		// Comment details with enhanced badges
-		console.log("");
-		const severityBadge = this.getSeverityBadge(
-			comment.severity || "suggestion",
-		);
-		clack.log.info(severityBadge);
+		this.ui.space();
+		const severityBadge = badges.severity(comment.severity || "suggestion");
+		this.ui.info(severityBadge);
 
 		// Confidence indicator
 		if (comment.confidence) {
-			const confidenceBadge = this.getConfidenceBadge(comment.confidence);
+			const confidenceBadge = badges.confidence(comment.confidence);
 			clack.log.step(confidenceBadge);
 		}
 
@@ -186,25 +184,6 @@ export class CommentDisplayService {
 		if (comment.rationale) {
 			clack.log.step(theme.dim(`Why: ${comment.rationale}`));
 		}
-	}
-
-	private getSeverityBadge(severity: string): string {
-		const badges: Record<string, string> = {
-			risk: theme.error("🔴 RISK"),
-			issue: theme.warning("🟠 ISSUE"),
-			suggestion: theme.accent("🔵 SUGGESTION"),
-			nit: theme.muted("⚪ NIT"),
-		};
-		return badges[severity] || theme.muted("ℹ️ INFO");
-	}
-
-	private getConfidenceBadge(confidence: string): string {
-		const badges: Record<string, string> = {
-			high: theme.success("🎯 High Confidence"),
-			medium: theme.accent("○ Medium Confidence"),
-			low: theme.muted("? Low Confidence"),
-		};
-		return badges[confidence] || "";
 	}
 
 	public async promptOptionalNotes(): Promise<string | undefined> {
