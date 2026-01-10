@@ -1,11 +1,15 @@
+import packageJson from "../../package.json" with { type: "json" };
 import type { ReviewComment } from "../review/types";
 import { ui } from "../ui/logger";
 import { box, emoji, theme } from "../ui/theme";
 
 export function displayHeader(): void {
 	const headerWidth = 60; // Custom width for the header
+	const version = packageJson.version;
+	const versionLabel = `version: ${version}`;
+
 	ui.space();
-	ui.log(box.top(undefined, headerWidth));
+	ui.log(box.top(versionLabel, headerWidth));
 	ui.log(box.centeredRow(theme.accent("CODE REVIEW MENTAT"), headerWidth));
 	ui.log(
 		box.centeredRow(

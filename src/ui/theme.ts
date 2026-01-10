@@ -91,18 +91,26 @@ export const box = {
 	top: (title?: string, width?: number): string => {
 		const boxWidth = width ?? box.WIDTH;
 		if (title) {
-			const paddingTotal = boxWidth - title.length - 6; // 6 for "╔═══  ═══╗"
+			// Total width = boxWidth
+			// Format: ╔ + equals + space + title + space + equals + ╗
+			// Fixed chars: ╔ (1) + space (1) + title + space (1) + ╗ (1) = 4 + title.length
+			const titleLength = title.length;
+			const remainingForEquals = boxWidth - 4 - titleLength;
+
 			// Prevent negative padding if title is too long
-			if (paddingTotal < 0) {
+			if (remainingForEquals < 0) {
 				// Title too long, truncate it
 				const maxTitleLength = boxWidth - 10;
 				const truncated = `${title.substring(0, maxTitleLength)}...`;
-				return theme.primary(`╔═══ ${truncated} ═══╗`);
+				return theme.primary(
+					`╔${"═".repeat(3)} ${truncated} ${"═".repeat(3)}╗`,
+				);
 			}
-			const leftPad = Math.floor(paddingTotal / 2);
-			const rightPad = paddingTotal - leftPad;
+
+			const leftPad = Math.floor(remainingForEquals / 2);
+			const rightPad = remainingForEquals - leftPad;
 			return theme.primary(
-				`╔═══${"═".repeat(leftPad)} ${title} ${"═".repeat(rightPad)}═══╗`,
+				`╔${"═".repeat(leftPad)} ${title} ${"═".repeat(rightPad)}╗`,
 			);
 		}
 		return theme.primary(`╔${"═".repeat(boxWidth - 2)}╗`);
