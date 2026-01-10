@@ -4,8 +4,13 @@
 	"description": "AI-powered CLI tool for automated code review of pull requests",
 	"license": "MIT",
 	"module": "src/index.ts",
+	"bin": {
+		"crm": "./code-review"
+	},
 	"scripts": {
 		"build": "bun build src/index.ts --compile --outfile code-review",
+		"install:global": "bun run build && chmod +x code-review && npm link",
+		"uninstall:global": "npm unlink -g code-review-mentat",
 		"start": "bun run src/index.ts",
 		"lint": "bun biome check",
 		"lint:fix": "biome check --write ."

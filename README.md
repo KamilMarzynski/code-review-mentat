@@ -8,7 +8,7 @@ An AI-powered command-line tool that transforms your code review workflow using 
 
 Also known as **Code Review Mentat** (CRM), inspired by the Mentats from Frank Herbert's Dune universe. In Dune, Mentats are human computers trained to perform complex logical computations and analysis—much like this tool performs deep code analysis and reviews. 
 
-_(Yes, we're aware that thinking machines are forbidden in the Dune universe)_ 🏜️
+_(Yes, I'm aware that thinking machines are forbidden in the Dune universe)_ 🏜️
 
 > ⚠️ **Early Development Notice**  
 > This project is in very early development (v0.1.0) and will continue to evolve. Current functionality focuses on code review analysis and insights. **Not yet implemented:** automatically fixing issues, posting comments to remote repositories, or helping address reviewer feedback. Expect breaking changes and new features in upcoming releases.
@@ -84,28 +84,33 @@ cd code-review-cli
 bun install
 ```
 
-3. Build the executable:
+3. Install globally:
+```bash
+./install.sh
+```
+
+Or use the npm script:
+```bash
+bun run install:global
+```
+
+This will build the executable and link it globally, allowing you to use `crm` from any repository.
+
+### Uninstall
+
+To remove the global installation:
+```bash
+bun run uninstall:global
+```
+
+### Alternative Installation Options
+
+**Manual Build and Copy**
+
+If you prefer not to install globally, you can build and copy the executable:
+
 ```bash
 bun run build
-```
-
-This creates a standalone `code-review` executable.
-
-### Installation Options
-
-**Option A: Add to PATH (Recommended)**
-
-Move the executable to a directory in your PATH:
-```bash
-sudo mv code-review /usr/local/bin/
-```
-
-Now you can run `code-review` from any repository.
-
-**Option B: Copy to Target Repository**
-
-Copy the `code-review` executable to the root of the repository you want to review:
-```bash
 cp code-review /path/to/your/repository/
 cd /path/to/your/repository/
 ./code-review
@@ -116,10 +121,10 @@ cd /path/to/your/repository/
 Navigate to the repository you want to review and run:
 
 ```bash
-code-review
+crm
 ```
 
-Or if you copied the executable to the repository:
+If you used the manual installation method, run:
 
 ```bash
 ./code-review
@@ -187,7 +192,7 @@ src/
 
 - [ ] Post review comments directly to remote pull requests
 - [ ] Help address reviewer feedback on your pull requests
-- [ ] Automatic issue fixing based on review findings
+- [x] Automatic issue fixing based on review findings
 - [ ] Interactive code cleanup workflows
 
 ### Platform & Integration
