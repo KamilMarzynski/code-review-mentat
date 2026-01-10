@@ -81,6 +81,13 @@ export const box = {
 	top: (title?: string): string => {
 		if (title) {
 			const paddingTotal = box.WIDTH - title.length - 6; // 6 for "╔═══  ═══╗"
+			// Prevent negative padding if title is too long
+			if (paddingTotal < 0) {
+				// Title too long, truncate it
+				const maxTitleLength = box.WIDTH - 10;
+				const truncated = title.substring(0, maxTitleLength) + "...";
+				return theme.primary(`╔═══ ${truncated} ═══╗`);
+			}
 			const leftPad = Math.floor(paddingTotal / 2);
 			const rightPad = paddingTotal - leftPad;
 			return theme.primary(
@@ -101,8 +108,13 @@ export const box = {
 			"",
 		).length;
 		const padding = box.WIDTH - strippedLength - 4; // 4 for "║  ║"
+		// Prevent negative padding if content is too long
+		const actualPadding = Math.max(0, padding);
 		return (
-			theme.primary("║") + content + " ".repeat(padding) + theme.primary("║")
+			theme.primary("║") +
+			content +
+			" ".repeat(actualPadding) +
+			theme.primary("║")
 		);
 	},
 

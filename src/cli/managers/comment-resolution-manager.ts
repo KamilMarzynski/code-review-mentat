@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import * as clack from "@clack/prompts";
 import type LocalCache from "../../cache/local-cache";
-import { type PullRequest, getPRKey } from "../../providers/types";
+import { getPRKey, type PullRequest } from "../../providers/types";
 import type {
 	ReviewComment,
 	ReviewCommentStatus,

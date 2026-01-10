@@ -1,7 +1,7 @@
 import * as clack from "@clack/prompts";
 import type { ReviewComment } from "../review/types";
-import { box, emoji, theme } from "../ui/theme";
 import { ui } from "../ui/logger";
+import { box, emoji, theme } from "../ui/theme";
 
 export function displayHeader(): void {
 	ui.space();
@@ -29,6 +29,9 @@ export function displayContext(context: string): void {
 		// Split into paragraphs and format nicely
 		const contextLines = context.split("\n");
 		for (const line of contextLines) {
+			// Defensive: skip processing if line is undefined
+			if (line === undefined) continue;
+
 			if (line.trim().startsWith("#")) {
 				// Headers in gold
 				ui.log(theme.primary(line));
@@ -55,14 +58,15 @@ export function displayComments(comments: ReviewComment[]): void {
 		ui.warn(`${emoji.warning} Found ${comments.length} observation(s):`);
 
 		comments.forEach((comment, i) => {
+			const message = comment.message || "";
 			ui.log(
 				theme.muted(`  ${i + 1}. `) +
 					theme.secondary(`${comment.file}:${comment.line || "?"}`) +
-					theme.muted(` [${comment.severity?.toUpperCase()}]`),
+					theme.muted(` [${comment.severity?.toUpperCase() || "UNKNOWN"}]`),
 			);
 			ui.log(
 				theme.muted(
-					`     ${comment.message.substring(0, 80)}${comment.message.length > 80 ? "..." : ""}`,
+					`     ${message.substring(0, 80)}${message.length > 80 ? "..." : ""}`,
 				),
 			);
 		});

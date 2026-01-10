@@ -1,8 +1,8 @@
 import * as clack from "@clack/prompts";
 import type { ReviewComment } from "../review/types";
-import { badges, box, emoji, theme } from "./theme";
-import type { UILogger } from "./logger";
 import type { CodeContextReader } from "./code-context-reader";
+import type { UILogger } from "./logger";
+import { badges, box, emoji, theme } from "./theme";
 
 /**
  * Formats and displays review comments with context
@@ -76,6 +76,8 @@ export class CommentFormatter {
 			this.ui.space();
 			this.ui.log(theme.secondary(`  ${emoji.fire} Hotspot Files:`));
 			for (const [file, count] of hotspots) {
+				// Defensive: ensure file and count exist
+				if (!file || count === undefined) continue;
 				const countLabel = count === 1 ? "comment" : "comments";
 				this.ui.log(
 					theme.muted(
@@ -152,7 +154,7 @@ export class CommentFormatter {
 			);
 		}
 
-		clack.log.step(theme.primary(comment.message));
+		clack.log.step(theme.primary(comment.message || "No message provided"));
 
 		if (comment.rationale) {
 			clack.log.step(theme.dim(`Why: ${comment.rationale}`));
@@ -162,6 +164,8 @@ export class CommentFormatter {
 	private groupByFile(comments: ReviewComment[]): Record<string, number> {
 		const grouped: Record<string, number> = {};
 		for (const comment of comments) {
+			// Defensive: skip comments without a file path
+			if (!comment.file) continue;
 			grouped[comment.file] = (grouped[comment.file] || 0) + 1;
 		}
 		return grouped;

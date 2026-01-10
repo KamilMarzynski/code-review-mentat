@@ -1,8 +1,8 @@
 import * as clack from "@clack/prompts";
 import type { ReviewComment } from "../../review/types";
-import type { UILogger } from "../../ui/logger";
 import { CodeContextReader } from "../../ui/code-context-reader";
 import { CommentFormatter } from "../../ui/comment-formatter";
+import type { UILogger } from "../../ui/logger";
 
 /**
  * Service for coordinating comment display and user interaction

@@ -19,6 +19,24 @@ enum Phase {
 	COMPLETE = "complete",
 }
 
+/**
+ * Extract a clean spinner message from a display message
+ * Removes emojis and extracts the action phrase
+ */
+function extractSpinnerMessage(displayMessage: string): string {
+	// Remove emoji characters using regex (matches most emoji ranges)
+	const withoutEmoji = displayMessage.replace(
+		/[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/gu,
+		"",
+	);
+
+	// Trim and take the part before any colon (the action, not the details)
+	const action = withoutEmoji.split(":")[0]?.trim() ?? "";
+
+	// If we got something meaningful, use it; otherwise use the cleaned message
+	return action.length > 0 ? action : withoutEmoji.trim();
+}
+
 export class ReviewStreamHandler {
 	constructor(
 		private reviewService: ReviewService,
@@ -164,7 +182,7 @@ export class ReviewStreamHandler {
 					event.toolName,
 					event.input,
 				);
-				const spinnerMessage = displayMessage.split(" ", 1)[0];
+				const spinnerMessage = extractSpinnerMessage(displayMessage);
 				this.ui.info(displayMessage);
 				contextSpinner.message(theme.secondary(spinnerMessage));
 				break;
@@ -266,7 +284,7 @@ export class ReviewStreamHandler {
 					event.toolName,
 					event.input,
 				);
-				const spinnerMessage = displayMessage.split(" ", 1)[0];
+				const spinnerMessage = extractSpinnerMessage(displayMessage);
 				this.ui.info(displayMessage);
 				reviewSpinner.message(theme.secondary(spinnerMessage));
 				break;

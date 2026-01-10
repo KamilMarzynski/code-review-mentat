@@ -1,5 +1,5 @@
-import { readFile } from "node:fs/promises";
 import { exec } from "node:child_process";
+import { readFile } from "node:fs/promises";
 import { promisify } from "node:util";
 
 /**
