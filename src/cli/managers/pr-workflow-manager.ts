@@ -11,6 +11,9 @@ export class PRWorkflowManager {
 		private ui: UILogger,
 	) {}
 
+	private readonly MAX_DISPLAYED_FILES = 4;
+	private readonly MAX_DISPLAYED_COMMITS = 4;
+
 	public async checkWorkspaceClean(): Promise<boolean> {
 		const status = await this.git.hasUncommittedChanges();
 
@@ -209,9 +212,6 @@ export class PRWorkflowManager {
 	public async analyzeChanges(
 		pr: PullRequest,
 	): Promise<{ fullDiff: string; editedFiles: string[] }> {
-		const s4 = this.ui.spinner();
-		s4.start(theme.muted("Computing diff matrix"));
-
 		const fullDiff = await this.git.getDiff(
 			pr.target.commitHash,
 			pr.source.commitHash,
@@ -221,10 +221,11 @@ export class PRWorkflowManager {
 			pr.source.commitHash,
 		);
 
-		s4.stop();
-
 		if (editedFiles.length > 0) {
-			const displayCount = Math.min(3, editedFiles.length);
+			const displayCount = Math.min(
+				this.MAX_DISPLAYED_FILES,
+				editedFiles.length,
+			);
 			const remaining = editedFiles.length - displayCount;
 
 			this.ui.info(theme.muted("Modified files:"));
@@ -252,11 +253,31 @@ export class PRWorkflowManager {
 		pr: PullRequest,
 	): Promise<string[]> {
 		this.ui.space();
-		const s5 = this.ui.spinner();
-		s5.start(theme.muted("Retrieving commit chronology"));
 
 		const commitMessages = await provider.fetchCommits(pr);
-		s5.stop();
+
+		if (commitMessages.length > 0) {
+			const displayCount = Math.min(
+				this.MAX_DISPLAYED_COMMITS,
+				commitMessages.length,
+			);
+			const remaining = commitMessages.length - displayCount;
+
+			this.ui.info(theme.muted("Commit history:"));
+			for (let i = 0; i < displayCount; i++) {
+				const commit = commitMessages[i];
+				// Truncate long commit messages
+				if (commit && commit.length > 70) {
+					const truncated = `${commit.substring(0, 67)}...`;
+					this.ui.log(theme.secondary(`  • ${truncated}`));
+				} else {
+					this.ui.log(theme.secondary(`  • ${commit}`));
+				}
+			}
+			if (remaining > 0) {
+				this.ui.log(theme.muted(`  • ...and ${remaining} more commit(s)`));
+			}
+		}
 
 		return commitMessages;
 	}
