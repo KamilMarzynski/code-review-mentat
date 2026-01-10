@@ -55,13 +55,15 @@ export async function promptForCacheStrategy(
 	if (hasCached) {
 		const commitChanged = meta?.gatheredFromCommit !== currentHash;
 
-		if (!commitChanged) {
+		if (meta && !commitChanged) {
 			clack.log.success(
 				theme.success("Deep context already computed. ") +
 					theme.muted(
-						`(gathered ${new Date(meta!.gatheredAt).toLocaleString()})`,
+						`(gathered ${new Date(meta.gatheredAt).toLocaleString()})`,
 					),
 			);
+			// Use cached context, no need to gather again
+			gatherContext = false;
 		} else {
 			clack.log.warn(
 				`${theme.warning("⚡ New computations detected in the pull request")}\n${theme.muted(`   Previous: ${meta?.gatheredFromCommit?.substring(0, 8)}`)}\n${theme.muted(`   Current:  ${currentHash?.substring(0, 8)}`)}`,
@@ -114,4 +116,47 @@ export async function promptForCacheStrategy(
 	}
 
 	return { gatherContext, refreshCache };
+}
+
+export async function promptForPendingCommentsAction(
+	pendingCount: number,
+	hasNewCommits: boolean,
+): Promise<"handle" | "review"> {
+	const action = await clack.select({
+		message: "What would you like to do?",
+		options: [
+			{
+				value: "handle",
+				label: "🔧 Handle pending comments",
+				hint: `Resolve ${pendingCount} pending comment(s)`,
+			},
+			{
+				value: "review",
+				label: "🔄 New review",
+				hint: hasNewCommits
+					? "Recommended: Review new changes"
+					: "Perform fresh review",
+			},
+		],
+	});
+
+	if (clack.isCancel(action)) {
+		clack.cancel("Operation cancelled");
+		process.exit(0);
+	}
+
+	return action as "handle" | "review";
+}
+
+export async function promptToResolveComments(): Promise<boolean> {
+	const shouldResolve = await clack.confirm({
+		message: "Would you like to review and resolve these comments now?",
+		initialValue: true,
+	});
+
+	if (clack.isCancel(shouldResolve)) {
+		return false;
+	}
+
+	return Boolean(shouldResolve);
 }

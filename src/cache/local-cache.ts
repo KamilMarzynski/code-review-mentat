@@ -1,6 +1,5 @@
-import { execSync } from "child_process";
-import { createHash } from "crypto";
-import envPaths from "env-paths";
+import { execSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import {
 	existsSync,
 	mkdirSync,
@@ -8,8 +7,10 @@ import {
 	readFileSync,
 	unlinkSync,
 	writeFileSync,
-} from "fs";
-import { join } from "path";
+} from "node:fs";
+import { join } from "node:path";
+import envPaths from "env-paths";
+import type { ReviewComment, ReviewCommentWithId } from "../review/types";
 
 /**
  * Cache structure for review context and pending comments
@@ -31,18 +32,8 @@ export type CachedContext = {
 
 		version: string;
 	};
-	pendingComments?: ReviewComment[];
+	comments?: ReviewCommentWithId[];
 	reviewedAt?: string;
-};
-
-type ReviewComment = {
-	file: string;
-	line?: number;
-	startLine?: number;
-	endLine?: number;
-	severity?: "nit" | "suggestion" | "issue" | "risk";
-	message: string;
-	rationale?: string;
 };
 
 /**
@@ -212,14 +203,16 @@ export default class LocalCache {
 			// Ignore
 		}
 
-		// Preserve pending comments if they exist
-		let existingPendingComments: ReviewComment[] | undefined;
+		// Preserve existing comments if they exist
+		let existingComments: ReviewCommentWithId[] | undefined;
+		let existingReviewedAt: string | undefined;
 		if (existsSync(cachePath)) {
 			try {
 				const existing: CachedContext = JSON.parse(
 					readFileSync(cachePath, "utf-8"),
 				);
-				existingPendingComments = existing.pendingComments;
+				existingComments = existing.comments;
+				existingReviewedAt = existing.reviewedAt;
 			} catch {
 				// Ignore parsing errors
 			}
@@ -237,7 +230,8 @@ export default class LocalCache {
 				repoRemote,
 				version: "1.0",
 			},
-			pendingComments: existingPendingComments,
+			comments: existingComments,
+			reviewedAt: existingReviewedAt,
 		};
 
 		writeFileSync(cachePath, JSON.stringify(cached, null, 2), "utf-8");
@@ -341,5 +335,134 @@ export default class LocalCache {
 	 */
 	getGlobalCacheLocation(): string {
 		return this.cacheDir;
+	}
+
+	/**
+	 * Save full comments for a PR session
+	 * Called immediately after review completes
+	 */
+	async saveComments(prKey: string, comments: ReviewComment[]): Promise<void> {
+		// Parse prKey back into branches
+		const [sourceBranch, targetBranch] = prKey.split("|");
+		if (!sourceBranch || !targetBranch) {
+			throw new Error(`Invalid prKey format: ${prKey}`);
+		}
+
+		const key = this.getCacheKey({ sourceBranch, targetBranch });
+		const cachePath = this.getCachePath(key);
+
+		// Load existing cache file
+		let cached: CachedContext;
+		if (existsSync(cachePath)) {
+			try {
+				cached = JSON.parse(readFileSync(cachePath, "utf-8"));
+			} catch {
+				// If we can't read the cache, create a minimal structure
+				cached = {
+					context: "No context available",
+					meta: {
+						sourceBranch,
+						targetBranch,
+						gatheredAt: new Date().toISOString(),
+						gatheredFromCommit: "unknown",
+						repoPath: process.cwd(),
+						version: "1.0",
+					},
+				};
+			}
+		} else {
+			// Create minimal cache structure if no context exists yet
+			cached = {
+				context: "No context available",
+				meta: {
+					sourceBranch,
+					targetBranch,
+					gatheredAt: new Date().toISOString(),
+					gatheredFromCommit: "unknown",
+					repoPath: process.cwd(),
+					version: "1.0",
+				},
+			};
+		}
+
+		// Update comments and reviewedAt timestamp
+		cached.comments = comments as ReviewCommentWithId[];
+		cached.reviewedAt = new Date().toISOString();
+
+		// Write back to cache
+		writeFileSync(cachePath, JSON.stringify(cached, null, 2), "utf-8");
+	}
+
+	/**
+	 * Get all comments for a PR session
+	 */
+	async getComments(prKey: string): Promise<ReviewCommentWithId[]> {
+		// Parse prKey back into branches
+		const [sourceBranch, targetBranch] = prKey.split("|");
+		if (!sourceBranch || !targetBranch) {
+			return [];
+		}
+
+		const key = this.getCacheKey({ sourceBranch, targetBranch });
+		const cachePath = this.getCachePath(key);
+
+		if (!existsSync(cachePath)) {
+			return [];
+		}
+
+		try {
+			const cached: CachedContext = JSON.parse(
+				readFileSync(cachePath, "utf-8"),
+			);
+			return cached.comments || [];
+		} catch {
+			return [];
+		}
+	}
+
+	/**
+	 * Update a single comment's data
+	 */
+	async updateComment(
+		prKey: string,
+		commentId: string,
+		updates: Partial<ReviewCommentWithId>,
+	): Promise<void> {
+		// Parse prKey back into branches
+		const [sourceBranch, targetBranch] = prKey.split("|");
+		if (!sourceBranch || !targetBranch) {
+			throw new Error(`Invalid prKey format: ${prKey}`);
+		}
+
+		const key = this.getCacheKey({ sourceBranch, targetBranch });
+		const cachePath = this.getCachePath(key);
+
+		if (!existsSync(cachePath)) {
+			throw new Error(`No cache file found for ${prKey}`);
+		}
+
+		const cached: CachedContext = JSON.parse(readFileSync(cachePath, "utf-8"));
+
+		if (!cached.comments || cached.comments.length === 0) {
+			throw new Error(`No comments found for ${prKey}`);
+		}
+
+		const index = cached.comments.findIndex((c) => c.id === commentId);
+		if (index === -1) {
+			throw new Error(`Comment ${commentId} not found`);
+		}
+
+		cached.comments[index] = {
+			...cached.comments[index],
+			...updates,
+		} as ReviewCommentWithId;
+
+		// Write back to cache
+		writeFileSync(cachePath, JSON.stringify(cached, null, 2), "utf-8");
+	}
+
+	async getUnresolvedComments(prKey: string): Promise<ReviewComment[]> {
+		const comments = await this.getComments(prKey);
+		return comments.filter((c) => c.status === "pending" || !c.status);
 	}
 }

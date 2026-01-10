@@ -1,4 +1,10 @@
-import { type BaseMessage, HumanMessage } from "@langchain/core/messages";
+import {
+	AIMessage,
+	type BaseMessage,
+	HumanMessage,
+	type ToolCall,
+	ToolMessage,
+} from "@langchain/core/messages";
 import type { LangGraphRunnableConfig } from "@langchain/langgraph";
 import type { ReactAgent } from "langchain";
 import type { ContextEvent, ReviewState } from "./types";
@@ -65,41 +71,40 @@ Edited Files: ${state.editedFiles.join(", ")}`);
 	): Promise<{ context: string; allMessages: BaseMessage[] }> {
 		const allMessages: BaseMessage[] = [...state.messages, message];
 
-		const stream = await this.agent.stream(
-			{
-				messages: allMessages,
-			},
-			{
-				streamMode: "messages",
-			},
-		);
+		const stream = await this.agent.stream({
+			messages: allMessages,
+		});
 
-		for await (const [message, _metadata] of stream) {
-			if (this.isAIMessage(message)) {
-				this.handleAIMessage(message, writer);
+		for await (const chunk of stream) {
+			if (chunk.messages && Array.isArray(chunk.messages)) {
+				const message = chunk.messages[chunk.messages.length - 1];
+				// console.debug("Received message from agent stream:", message);
+				if (this.isAIMessageType(message)) {
+					this.handleAIMessage(message, writer);
+				}
+
+				if (this.isToolMessageType(message)) {
+					this.handleToolMessage(writer);
+				}
+
+				allMessages.push(message);
 			}
-
-			if (this.isToolMessage(message)) {
-				this.handleToolMessage(message, writer);
-			}
-
-			allMessages.push(message);
 		}
 
 		const context = this.extractContext(allMessages);
 		return { context, allMessages };
 	}
 
-	private isAIMessage(message: any): boolean {
-		return message && message._getType && message._getType() === "ai";
+	private isAIMessageType(message: BaseMessage): message is AIMessage {
+		return AIMessage.isInstance(message);
 	}
 
-	private isToolMessage(message: any): boolean {
-		return message && message._getType && message._getType() === "tool";
+	private isToolMessageType(message: BaseMessage): message is ToolMessage {
+		return ToolMessage.isInstance(message);
 	}
 
 	private handleAIMessage(
-		msg: any,
+		msg: AIMessage,
 		writer: (event: ContextEvent) => void,
 	): void {
 		if (this.hasToolCallReasoning(msg)) {
@@ -111,7 +116,7 @@ Edited Files: ${state.editedFiles.join(", ")}`);
 		}
 	}
 
-	private hasToolCallReasoning(msg: any): boolean {
+	private hasToolCallReasoning(msg: AIMessage): boolean {
 		return (
 			Array.isArray(msg.content) &&
 			msg.content.map((c: { type: string }) => c.type).includes("text") &&
@@ -120,12 +125,20 @@ Edited Files: ${state.editedFiles.join(", ")}`);
 	}
 
 	private emitToolCallReasoning(
-		msg: any,
+		msg: AIMessage,
 		writer: (event: ContextEvent) => void,
 	): void {
+		if (!Array.isArray(msg.content)) {
+			return;
+		}
+
 		for (const contentBlock of msg.content) {
-			if (contentBlock.type === "text" && contentBlock.text) {
-				const text = contentBlock.text.trim();
+			if (
+				typeof contentBlock !== "string" &&
+				contentBlock.type === "text" &&
+				"text" in contentBlock
+			) {
+				const text = (contentBlock.text as string).trim();
 				if (text.length > 0) {
 					writer({
 						type: "context_tool_call_reasoning",
@@ -140,7 +153,7 @@ Edited Files: ${state.editedFiles.join(", ")}`);
 	}
 
 	private emitToolCalls(
-		toolCalls: any[],
+		toolCalls: ToolCall[],
 		writer: (event: ContextEvent) => void,
 	): void {
 		for (const toolCall of toolCalls) {
@@ -151,9 +164,13 @@ Edited Files: ${state.editedFiles.join(", ")}`);
 				args.query ||
 				args.issueKey ||
 				args.issue_key ||
+				args.issueIdOrKey ||
 				args.pageId ||
 				args.page_id ||
 				args.id ||
+				args.jql ||
+				args.cql ||
+				args.cloudId ||
 				"";
 
 			writer({
@@ -167,10 +184,7 @@ Edited Files: ${state.editedFiles.join(", ")}`);
 		}
 	}
 
-	private handleToolMessage(
-		msg: any,
-		writer: (event: ContextEvent) => void,
-	): void {
+	private handleToolMessage(writer: (event: ContextEvent) => void): void {
 		writer({
 			type: "context_tool_result",
 			metadata: {

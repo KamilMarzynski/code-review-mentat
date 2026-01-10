@@ -1,11 +1,17 @@
 import { ChatAnthropic } from "@langchain/anthropic";
 import { createAgent } from "langchain";
 import LocalCache from "./cache/local-cache";
+import { CommentDisplayService } from "./cli/managers/comment-display-service";
+import { CommentResolutionManager } from "./cli/managers/comment-resolution-manager";
+import { FixSessionOrchestrator } from "./cli/managers/fix-session-orchestrator";
+import { PRWorkflowManager } from "./cli/managers/pr-workflow-manager";
+import { ReviewStreamHandler } from "./cli/managers/review-stream-handler";
 import { CLIOrchestrator } from "./cli/orchestrator";
 import GitOperations from "./git/operations";
 import { createMCPClient, getMCPTools } from "./mcp/client";
 import BitbucketServerProvider from "./providers/bitbucket";
 import { CodeReviewer } from "./review/code-reviewer";
+import { CommentFixer } from "./review/comment-fixer";
 import { ContextGatherer } from "./review/context-gatherer";
 import { ReviewService } from "./review/review-service";
 import { UILogger } from "./ui/logger";
@@ -49,18 +55,31 @@ const main = async () => {
 	const contextGatherer = new ContextGatherer(contextGathererAgent);
 	const codeReviewer = new CodeReviewer(PATH_TO_CLAUDE);
 	const reviewService = new ReviewService(contextGatherer, codeReviewer);
+	const commentFixer = new CommentFixer(PATH_TO_CLAUDE);
 
 	// Provider factory function
 	const createProvider = (remote: string) =>
 		new BitbucketServerProvider(remote);
 
-	// Initialize and run orchestrator
-	const orchestrator = new CLIOrchestrator(
-		git,
-		createProvider,
+	const prWorkflow = new PRWorkflowManager(git, createProvider, ui);
+	const commentResolution = new CommentResolutionManager(cache, ui);
+	const reviewHandler = new ReviewStreamHandler(
 		reviewService,
 		cache,
 		ui,
+		commentResolution,
+	);
+	const fixSession = new FixSessionOrchestrator(commentFixer, git, cache, ui);
+	const commentDisplay = new CommentDisplayService(ui);
+
+	// Initialize and run orchestrator
+	const orchestrator = new CLIOrchestrator(
+		prWorkflow,
+		reviewHandler,
+		commentResolution,
+		fixSession,
+		commentDisplay,
+		cache,
 	);
 	await orchestrator.run();
 };
