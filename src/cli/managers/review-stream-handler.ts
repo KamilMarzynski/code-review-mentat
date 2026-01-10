@@ -194,11 +194,7 @@ export class ReviewStreamHandler {
 
 			case "context_success":
 				if (currentPhase.value === Phase.CONTEXT && !contextHasError.value) {
-					const message =
-						event.dataSource === "cache"
-							? "Using cached deep context"
-							: `Context gathered using ${toolsByType.size} tool call(s)`;
-					contextSpinner.stop(theme.success(`✓ ${message}`));
+					this.ui.sectionComplete("Deep context synthesis complete");
 				}
 				break;
 
@@ -245,8 +241,9 @@ export class ReviewStreamHandler {
 		switch (event.type) {
 			case "review_start":
 				if (currentPhase.value === Phase.CONTEXT) {
-					this.ui.sectionComplete("Deep context synthesis complete");
 					currentPhase.value = Phase.REVIEW;
+					this.ui.space();
+					this.ui.divider();
 				}
 
 				if (contextHasError.value) {

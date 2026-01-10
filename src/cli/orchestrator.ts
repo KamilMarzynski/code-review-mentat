@@ -78,6 +78,8 @@ export class CLIOrchestrator {
 
 			// Display review summary if comments exist
 			if (comments.length > 0 && !reviewHasError) {
+				console.log("");
+				console.log(theme.muted("─".repeat(60)));
 				this.commentDisplay.displayReviewSummary(comments);
 			}
 
@@ -99,6 +101,10 @@ export class CLIOrchestrator {
 			);
 
 			if (pendingComments.length > 0) {
+				console.log("");
+				console.log(theme.muted("─".repeat(60)));
+				console.log("");
+
 				const shouldResolve = await promptToResolveComments();
 
 				if (!shouldResolve) {

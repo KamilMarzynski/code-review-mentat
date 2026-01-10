@@ -18,7 +18,7 @@ export class UILogger {
 	step(message: string) {
 		stepCounter++;
 		console.log("");
-		console.log(`${theme.accent(`  ${stepCounter}. ${message}`)}`);
+		console.log(`${theme.accent(`  ${message}`)}`);
 	}
 
 	/**

@@ -92,16 +92,15 @@ export class PRWorkflowManager {
 	public async selectPullRequest(prs: PullRequest[]): Promise<PullRequest> {
 		const selectedPr = await promptForPR(prs);
 
-		clack.log.step(theme.muted(`Target: ${selectedPr.title}`));
-		clack.log.step(
-			theme.muted(
-				`Source: ${selectedPr.source.name} (${selectedPr.source.commitHash.substring(0, 8)})`,
-			),
+		// Display selected PR info in consistent format
+		this.ui.space();
+		clack.log.step(theme.primary(`Target: ${selectedPr.title}`));
+		this.ui.space();
+		clack.log.info(
+			`${theme.secondary("Source:")} ${selectedPr.source.name} ${theme.muted(`(${selectedPr.source.commitHash.substring(0, 8)})`)}`,
 		);
-		clack.log.step(
-			theme.muted(
-				`Target: ${selectedPr.target.name} (${selectedPr.target.commitHash.substring(0, 8)})`,
-			),
+		clack.log.info(
+			`${theme.secondary("Target:")} ${selectedPr.target.name} ${theme.muted(`(${selectedPr.target.commitHash.substring(0, 8)})`)}`,
 		);
 
 		return selectedPr;
@@ -152,13 +151,26 @@ export class PRWorkflowManager {
 
 		s4.stop(theme.success(`✓ Analyzed ${editedFiles.length} file(s)`));
 
-		clack.log.info(
-			theme.muted("Modified files: ") +
-				theme.secondary(editedFiles.slice(0, 5).join(", ")) +
-				(editedFiles.length > 5
-					? theme.muted(` (+${editedFiles.length - 5} more)`)
-					: ""),
-		);
+		if (editedFiles.length > 0) {
+			const displayCount = Math.min(3, editedFiles.length);
+			const remaining = editedFiles.length - displayCount;
+
+			this.ui.info(theme.muted("Modified files:"));
+			for (let i = 0; i < displayCount; i++) {
+				const file = editedFiles[i];
+				// Truncate long paths from the middle
+				if (file && file.length > 70) {
+					const parts = file.split("/");
+					const truncated = `.../${parts.slice(-2).join("/")}`;
+					this.ui.log(theme.secondary(`  • ${truncated}`));
+				} else {
+					this.ui.log(theme.secondary(`  • ${file}`));
+				}
+			}
+			if (remaining > 0) {
+				this.ui.log(theme.muted(`  • ...and ${remaining} more file(s)`));
+			}
+		}
 
 		return { fullDiff, editedFiles };
 	}
@@ -167,13 +179,13 @@ export class PRWorkflowManager {
 		provider: GitProvider,
 		pr: PullRequest,
 	): Promise<string[]> {
+		this.ui.space();
 		const s5 = this.ui.spinner();
 		s5.start(theme.muted("Retrieving commit chronology"));
 
 		const commitMessages = await provider.fetchCommits(pr);
 		s5.stop(theme.success(`✓ Processed ${commitMessages.length} commit(s)`));
 
-		console.log(""); // Spacing
 		return commitMessages;
 	}
 }
