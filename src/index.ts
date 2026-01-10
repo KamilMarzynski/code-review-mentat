@@ -97,7 +97,13 @@ Provide a structured summary:
 		commentDisplay,
 		cache,
 	);
-	await orchestrator.run();
+
+	try {
+		await orchestrator.run();
+	} finally {
+		// Close MCP client to allow process to exit
+		await mcpClient.close();
+	}
 };
 
 main().catch((error) => {
