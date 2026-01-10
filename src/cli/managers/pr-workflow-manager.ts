@@ -121,7 +121,7 @@ export class PRWorkflowManager {
 			s3.message(
 				theme.muted("Entering computation state (checking out source)"),
 			);
-			await this.git.checkout(pr.source.commitHash);
+			await this.git.checkout(pr.source.name);
 
 			s3.stop(theme.success("✓ Repository prepared"));
 		} catch (error) {
