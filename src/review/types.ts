@@ -19,6 +19,8 @@ export type ReviewComment = {
 	message: string;
 	rationale?: string;
 	status: ReviewCommentStatus;
+	confidence?: "high" | "medium" | "low";
+	verifiedBy?: string; // Tool used to verify (e.g., "Grep: found 3 usages")
 };
 
 export type ReviewCommentWithId = ReviewComment & {

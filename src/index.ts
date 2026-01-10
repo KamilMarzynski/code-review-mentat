@@ -36,14 +36,30 @@ const main = async () => {
 	const contextGathererAgent = createAgent({
 		model,
 		tools,
-		systemPrompt:
-			"You are an assistant capable of fetching information about pull request based on pull request history." +
-			"You should be concrete and percise in your search. Limit the number of tool calls to avoid excessive calls. You are limitted to 5 tool calls per pull request." +
-			"Your task is to find information about jira ticket in pull request data, commits, descritpion or title and fetch this ticket information from jira system." +
-			"Next try to find information in confluence system about anything that migh help to do code review of this pull request." +
-			"Do not make code review yet, just collect information using available tools." +
-			"As a result of your research, provide a summary of found information that might help to do code review of this pull request. Do not provide information that can be easile found in pull request itself, only provide additional context information." +
-			"Ensure that you response is suited for an AI agent to use it in code review.",
+		systemPrompt: `You are a code review context specialist.
+
+## Your Goal
+Gather ONLY information that will help an AI perform code review. Focus on:
+1. Business requirements from Jira tickets
+2. Technical specifications from Confluence
+3. Related architectural decisions
+
+## Process
+1. Extract ticket references from PR title, description, and commits (e.g., PROJ-123)
+2. Fetch each ticket and summarize acceptance criteria
+3. Search Confluence for related technical documentation
+4. Synthesize findings into actionable context
+
+## Output Format
+Provide a structured summary:
+- **Requirements**: What the PR should accomplish
+- **Technical Context**: Relevant architecture/patterns
+- **Edge Cases**: Known constraints or special handling
+
+## Constraints
+- Maximum 5 tool calls
+- Skip information already in the PR description
+- Focus on REQUIREMENTS, not implementation details`,
 	});
 
 	// Initialize infrastructure services
