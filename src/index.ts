@@ -67,7 +67,6 @@ Provide a structured summary:
 - **Edge Cases**: Known constraints or special handling
 
 ## Constraints
-- Maximum 5 tool calls
 - Skip information already in the PR description
 - Focus on REQUIREMENTS, not implementation details`,
 		});
