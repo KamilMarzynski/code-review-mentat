@@ -24,6 +24,9 @@ export class CodeReviewer {
 
 		const prompt = this.buildPrompt(state);
 
+		// Track tools used during review for verification validation
+		const toolsUsed: Array<{ tool: string; input: string }> = [];
+
 		const result = await this.executor.executeStructured<{
 			comments: ReviewComment[];
 		}>({
@@ -33,6 +36,8 @@ export class CodeReviewer {
 				"You are in READ-ONLY review mode.",
 				"Never use Edit or Write tools.",
 				"Prefer Grep/Glob/Read for codebase discovery.",
+				"IMPORTANT: For each comment, you MUST have used a tool to verify it.",
+				"Comments without tool verification will be flagged as low confidence.",
 			].join("\n"),
 			allowedTools: ["Read", "Grep", "Glob"],
 			disallowedTools: ["Edit", "Write"],
@@ -41,6 +46,16 @@ export class CodeReviewer {
 				if (toolName === "Edit" || toolName === "Write") {
 					return { behavior: "deny", message: "Review node is read-only." };
 				}
+				// Track tool usage for verification
+				toolsUsed.push({
+					tool: toolName,
+					input:
+						input?.file_path ||
+						input?.path ||
+						input?.pattern ||
+						input?.query ||
+						"",
+				});
 				return { behavior: "allow", updatedInput: input };
 			},
 			onMessage: (msg) => this.handleMessage(msg, writer),
@@ -56,14 +71,61 @@ export class CodeReviewer {
 		}
 
 		const comments = result.data.comments;
-		this.emitSuccess(writer, comments);
-		this.emitReviewData(writer, state, comments);
+
+		// Validate and annotate comments based on actual tool usage
+		const validatedComments = this.validateCommentVerification(
+			comments,
+			toolsUsed,
+		);
+
+		this.emitSuccess(writer, validatedComments);
+		this.emitReviewData(writer, state, validatedComments);
 
 		return {
 			...state,
-			comments,
+			comments: validatedComments,
 			result: "Review completed successfully",
 		};
+	}
+
+	/**
+	 * Validates that comments claiming verification actually had corresponding tool calls.
+	 * Downgrades confidence for unverified claims.
+	 */
+	private validateCommentVerification(
+		comments: ReviewComment[],
+		toolsUsed: Array<{ tool: string; input: string }>,
+	): ReviewComment[] {
+		return comments.map((comment) => {
+			// Check if the file was actually read/grepped
+			const fileWasVerified = toolsUsed.some(
+				(t) =>
+					(t.tool === "Read" || t.tool === "Grep") &&
+					t.input.includes(comment.file.split("/").pop() || comment.file),
+			);
+
+			// If comment claims high confidence but file wasn't verified, downgrade
+			if (comment.confidence === "high" && !fileWasVerified) {
+				return {
+					...comment,
+					confidence: "medium" as const,
+					verifiedBy: comment.verifiedBy
+						? `${comment.verifiedBy} [UNVERIFIED - file not found in tool calls]`
+						: "[UNVERIFIED - no tool verification found]",
+				};
+			}
+
+			// If no tools were used at all and confidence is high, downgrade to low
+			if (toolsUsed.length === 0 && comment.confidence === "high") {
+				return {
+					...comment,
+					confidence: "low" as const,
+					verifiedBy: "[UNVERIFIED - no tools used during review]",
+				};
+			}
+
+			return comment;
+		});
 	}
 
 	private createWriter(
@@ -78,6 +140,8 @@ export class CodeReviewer {
 	}
 
 	private buildPrompt(state: ReviewState): string {
+		const contextGuidance = this.buildContextGuidance(state.context);
+
 		return [
 			"You are performing a code review for a pull request.",
 			"",
@@ -87,18 +151,74 @@ export class CodeReviewer {
 			"3. **MEDIUM**: Performance issues, missing validation",
 			"4. **LOW**: Maintainability improvements (only if high-impact)",
 			"",
+			"## Common Code Quality Issues to Check",
+			"- **Error handling**: Unhandled errors, swallowed exceptions, missing cleanup",
+			"- **Null/undefined safety**: Missing checks, unsafe access patterns",
+			"- **Resource management**: Leaks, unclosed handles, missing cleanup",
+			"- **Concurrency**: Race conditions, deadlocks, unsafe shared state",
+			"- **Security**: Input validation, injection risks, unsafe operations",
+			"",
 			"## Anti-Patterns to Avoid",
 			"- Do NOT comment on style/formatting (covered by linters)",
 			"- Do NOT suggest cosmetic refactors",
 			"- Do NOT repeat the same comment for multiple occurrences",
+			"- Do NOT comment on naming unless it causes actual confusion",
+			"- Do NOT suggest adding comments to self-explanatory code",
 			"",
-			"## Before Commenting",
-			"Use Grep/Read to verify your concerns against the actual codebase.",
-			"Only comment if you're confident the issue exists.",
-			"For each comment, provide:",
-			"- High confidence: Verified with tools (Grep/Read)",
-			"- Medium confidence: Based on diff analysis",
-			"- Low confidence: Potential concern, needs investigation",
+			"## Before Commenting - MANDATORY",
+			"You MUST use Grep/Read to verify your concerns against the actual codebase.",
+			"Only comment if you're confident the issue exists after verification.",
+			"",
+			"For each comment, you MUST:",
+			"1. Use a tool (Grep/Read) to verify the issue exists",
+			"2. Set confidence based on verification:",
+			"   - high: You used Grep/Read and confirmed the issue",
+			"   - medium: You verified related code but issue is contextual",
+			"   - low: Could not fully verify, flagging for human review",
+			"3. Fill 'verifiedBy' with the tool and finding (e.g., 'Grep: no null check in 3 callers')",
+			"",
+			"## Examples of GOOD vs BAD Comments",
+			"",
+			"### ✅ GOOD Comment (verified, actionable, high-value)",
+			"```json",
+			"{",
+			'  "file": "src/api/handler.ts",',
+			'  "line": 45,',
+			'  "severity": "risk",',
+			'  "message": "This async function catches errors but re-throws without the original stack trace",',
+			'  "rationale": "When the caught error is wrapped in a new Error(), the original stack trace is lost, making debugging production issues difficult",',
+			'  "confidence": "high",',
+			'  "verifiedBy": "Read: confirmed error is caught at line 42 and new Error() thrown at 45"',
+			"}",
+			"```",
+			"",
+			"### ❌ BAD Comment (style-only, not verified)",
+			"```json",
+			"{",
+			'  "file": "src/api/handler.ts",',
+			'  "line": 12,',
+			'  "severity": "suggestion",',
+			'  "message": "Consider renaming this variable to be more descriptive",',
+			'  "confidence": "medium",',
+			'  "verifiedBy": ""',
+			"}",
+			"```",
+			"Why bad: Style preference, not a bug. No verification performed.",
+			"",
+			"### ✅ GOOD Comment (security issue, verified)",
+			"```json",
+			"{",
+			'  "file": "src/auth/validate.ts",',
+			'  "line": 28,',
+			'  "severity": "risk",',
+			'  "message": "User input is passed directly to SQL query without sanitization",',
+			'  "rationale": "The userId parameter from request body is concatenated into the query string, enabling SQL injection",',
+			'  "confidence": "high",',
+			'  "verifiedBy": "Grep: found query construction at line 28, traced userId from req.body at line 15"',
+			"}",
+			"```",
+			"",
+			contextGuidance,
 			"",
 			"## Inputs",
 			`Edited files (${state.editedFiles.length}):`,
@@ -107,11 +227,26 @@ export class CodeReviewer {
 			"Commits:",
 			...state.commits.map((c) => `- ${c}`),
 			"",
-			"Deep context (Jira/Confluence):",
-			JSON.stringify(state.context, null, 2),
-			"",
 			"PR diff:",
 			state.diff,
+		].join("\n");
+	}
+
+	private buildContextGuidance(context: string | undefined): string {
+		if (!context || context === "Context gathering failed.") {
+			return "";
+		}
+
+		return [
+			"## Using Business Context",
+			"The following Jira/Confluence context was gathered for this PR.",
+			"Use it to understand:",
+			"- What problem this PR is solving (check if the code actually solves it)",
+			"- Acceptance criteria (verify they're met)",
+			"- Related components (check for integration issues)",
+			"",
+			"Context:",
+			context,
 		].join("\n");
 	}
 

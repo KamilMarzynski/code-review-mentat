@@ -38,15 +38,4 @@ export class CommentDisplayService {
 	public async promptOptionalNotes(): Promise<string | undefined> {
 		return await promptOptionalNotes();
 	}
-
-	/**
-	 * Get full diff for context
-	 */
-	public async getFullDiff(): Promise<string> {
-		const diff = await this.codeReader.getFullDiff();
-		if (!diff) {
-			this.ui.warn("Could not get full diff");
-		}
-		return diff;
-	}
 }

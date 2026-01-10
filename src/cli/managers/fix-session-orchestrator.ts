@@ -27,7 +27,6 @@ export class FixSessionOrchestrator {
 	public async runFixSession(
 		comment: ReviewComment,
 		prKey: string,
-		fullDiff: string,
 		userOptionalNotes: string | undefined,
 		summary: {
 			accepted: number;
@@ -42,7 +41,6 @@ export class FixSessionOrchestrator {
 		const plan = await this.runPlanningPhase(
 			comment,
 			prKey,
-			fullDiff,
 			userOptionalNotes,
 			summary,
 		);
@@ -56,7 +54,6 @@ export class FixSessionOrchestrator {
 			comment,
 			prKey,
 			plan,
-			fullDiff,
 			userOptionalNotes,
 			summary,
 		);
@@ -65,7 +62,6 @@ export class FixSessionOrchestrator {
 	private async runPlanningPhase(
 		comment: ReviewComment,
 		prKey: string,
-		fullDiff: string,
 		userOptionalNotes: string | undefined,
 		summary: {
 			accepted: number;
@@ -94,7 +90,6 @@ export class FixSessionOrchestrator {
 
 			try {
 				plan = await this.commentFixer.generatePlan(comment, {
-					fullDiff,
 					userOptionalNotes,
 					previousPlanFeedback: planFeedback,
 				});
@@ -179,7 +174,6 @@ export class FixSessionOrchestrator {
 		comment: ReviewComment,
 		prKey: string,
 		plan: FixPlan,
-		fullDiff: string,
 		userOptionalNotes: string | undefined,
 		summary: {
 			accepted: number;
@@ -200,9 +194,8 @@ export class FixSessionOrchestrator {
 
 		try {
 			const result = await this.commentFixer.executePlan(
-				comment,
 				plan,
-				{ fullDiff, userOptionalNotes },
+				{ userOptionalNotes },
 				async (event) => {
 					// Update UI based on event type
 					switch (event.type) {

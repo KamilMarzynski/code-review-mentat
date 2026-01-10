@@ -22,7 +22,6 @@ export class CommentFixer {
 	async generatePlan(
 		comment: ReviewComment,
 		context: {
-			fullDiff: string;
 			userOptionalNotes?: string;
 			previousPlanFeedback?: string; // For iteration
 		},
@@ -36,10 +35,17 @@ export class CommentFixer {
 			`**Issue:** ${comment.message}`,
 			comment.rationale ? `**Why:** ${comment.rationale}` : "",
 			"",
-			"## PR Context",
-			"```diff",
-			context.fullDiff,
-			"```",
+			"## SCOPE CONSTRAINTS - READ CAREFULLY",
+			"",
+			"⚠️ Your fix MUST be minimal and focused:",
+			"- ONLY fix the specific issue mentioned in the comment",
+			"- Do NOT refactor unrelated code",
+			"- Do NOT add features or improvements beyond the fix",
+			"- Do NOT touch files that aren't necessary for the fix",
+			"- Prefer surgical changes over broad refactors",
+			"",
+			"If the fix genuinely requires changes to multiple files, explain why.",
+			"If you're unsure, propose the SMALLEST possible fix.",
 			"",
 			context.userOptionalNotes
 				? ["## Additional Context", context.userOptionalNotes, ""].join("\n")
@@ -59,9 +65,16 @@ export class CommentFixer {
 			"",
 			"Your plan should include:",
 			"1. High-level approach (1-2 sentences)",
-			"2. Step-by-step implementation steps",
-			"3. List of files that will be affected",
+			"2. Step-by-step implementation steps (be specific)",
+			"3. List of files that will be affected (keep minimal)",
 			"4. Potential risks or edge cases",
+			"",
+			"## Plan Quality Checklist",
+			"Before finalizing, verify your plan:",
+			"- [ ] Fixes ONLY the specific issue (not adjacent problems)",
+			"- [ ] Affects the minimum number of files",
+			"- [ ] Each step is concrete and actionable",
+			"- [ ] Risks are realistic, not theoretical",
 			"",
 			"Be specific but concise.",
 		]
@@ -104,7 +117,7 @@ export class CommentFixer {
 				"Do NOT implement yet - just plan.",
 				"Be specific about what you will change and why.",
 			].join("\n"),
-			allowedTools: ["Read", "Grep", "Glob"],
+			allowedTools: ["Read", "Grep", "Glob", "AskUserQuestion"],
 			disallowedTools: ["Edit", "Write"],
 			permissionMode: "default",
 		});
@@ -121,10 +134,8 @@ export class CommentFixer {
 	// =====================================
 
 	async executePlan(
-		comment: ReviewComment,
 		approvedPlan: FixPlan,
 		context: {
-			fullDiff: string;
 			userOptionalNotes?: string;
 		},
 		onProgress: (event: {
@@ -139,7 +150,7 @@ export class CommentFixer {
 		finalThoughts: string;
 		error?: string;
 	}> {
-		const prompt = this.buildExecutionPrompt(comment, approvedPlan, context);
+		const prompt = this.buildExecutionPrompt(approvedPlan, context);
 
 		const filesModified = new Set<string>();
 		let finalThoughts = "";
@@ -155,7 +166,14 @@ export class CommentFixer {
 				"",
 				"IMPORTANT: You have an approved plan. Follow it closely.",
 			].join("\n"),
-			allowedTools: ["Read", "Write", "Edit", "Grep", "Glob"],
+			allowedTools: [
+				"Read",
+				"Write",
+				"Edit",
+				"Grep",
+				"Glob",
+				"AskUserQuestion",
+			],
 			permissionMode: "acceptEdits",
 			onMessage: async (msg) => {
 				if (msg.type === "assistant") {
@@ -187,7 +205,18 @@ export class CommentFixer {
 									const toolBlock = block as any;
 									const toolName = toolBlock.name;
 									toolCallCount++;
-
+									// ✅ Checkpoint BEFORE Edit calls - let user preview what's about to change
+									if (toolName === "Edit") {
+										const preEditDecision = await onProgress({
+											type: "checkpoint",
+											message: `About to edit: ${toolBlock.input?.path || "file"}`,
+											toolName,
+											toolCount: toolCallCount,
+										});
+										if (preEditDecision === "stop") {
+											return "stop";
+										}
+									}
 									const decision = await onProgress({
 										type: "tool_use",
 										message: this.describeToolUse(toolName, toolBlock.input),
@@ -195,20 +224,24 @@ export class CommentFixer {
 										toolCount: toolCallCount,
 									});
 
-									if (decision === "stop") return "stop";
+									if (decision === "stop") {
+										return "stop";
+									}
 
 									if (toolName === "Edit" && toolBlock.input?.path) {
 										filesModified.add(toolBlock.input.path);
 									}
 
-									// ✅ Checkpoint every 10 tool calls
+									// Checkpoint every 10 tool calls
 									if (toolCallCount % 10 === 0) {
 										const checkpointDecision = await onProgress({
 											type: "checkpoint",
-											message: `Checkpoint: ${toolCallCount} operations completed`,
+											message: `Checkpoint: ${toolCallCount} operations completed. Files modified: ${filesModified.size}`,
 											toolCount: toolCallCount,
 										});
-										if (checkpointDecision === "stop") return "stop";
+										if (checkpointDecision === "stop") {
+											return "stop";
+										}
 									}
 								}
 							}
@@ -267,10 +300,8 @@ export class CommentFixer {
 	}
 
 	private buildExecutionPrompt(
-		comment: ReviewComment,
 		plan: FixPlan,
 		context: {
-			fullDiff: string;
 			userOptionalNotes?: string;
 		},
 	): string {
@@ -294,11 +325,6 @@ export class CommentFixer {
 						"",
 					].join("\n")
 				: "",
-			"## PR Context",
-			"```diff",
-			context.fullDiff,
-			"```",
-			"",
 			context.userOptionalNotes
 				? ["## Additional Context", context.userOptionalNotes, ""].join("\n")
 				: "",
@@ -306,14 +332,28 @@ export class CommentFixer {
 			"",
 			"**Execute the approved plan above.**",
 			"",
-			"Work autonomously:",
-			"- Follow each step in order",
-			"- Read files as needed",
-			"- Make edits to implement the fix",
-			"- Validate your changes",
-			"- Fix any issues that arise",
+			"## Execution Rules",
 			"",
-			"Implement the plan completely. Start now.",
+			"✅ DO:",
+			"- Follow each step in order",
+			"- Read files before editing to understand current state",
+			"- Make surgical, minimal edits",
+			"- After editing, validate your changes (run tests/linters if applicable)",
+			"- Verify your changes make sense in context",
+			"",
+			"❌ DO NOT:",
+			"- Edit files not in the approved list without good reason",
+			"- Make unrelated improvements or refactors",
+			"- Continue if you're confused - stop and explain",
+			"- Change more code than necessary",
+			"",
+			"## Error Handling",
+			"If something unexpected happens:",
+			"- STOP immediately",
+			"- Do NOT try to fix cascading issues beyond the scope",
+			"- Explain what went wrong",
+			"",
+			"Begin implementation now.",
 		]
 			.filter(Boolean)
 			.join("\n");

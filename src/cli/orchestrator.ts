@@ -148,14 +148,10 @@ export class CLIOrchestrator {
 				// Get optional notes for Claude
 				const optionalNotes = await this.commentDisplay.promptOptionalNotes();
 
-				// Get full diff for context
-				const fullDiff = await this.commentDisplay.getFullDiff();
-
 				// Run the fix session (planning + execution)
 				await this.fixSession.runFixSession(
 					comment,
 					prKey,
-					fullDiff,
 					optionalNotes,
 					summary,
 				);
