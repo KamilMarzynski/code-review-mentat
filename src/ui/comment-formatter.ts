@@ -96,19 +96,18 @@ export class CommentFormatter {
 	 * Display a single comment with full code context
 	 */
 	async displayCommentWithContext(comment: ReviewComment): Promise<void> {
-		this.ui.space();
-
-		// File info
-		this.ui.info(theme.secondary(`${emoji.file} ${comment.file}`));
-
-		// Line info
-		if (comment.startLine && comment.endLine) {
-			clack.log.step(
-				theme.muted(`Lines ${comment.startLine}-${comment.endLine}`),
-			);
-		} else if (comment.line) {
-			clack.log.step(theme.muted(`Line ${comment.line}`));
+		// File info with smart truncation
+		let displayPath = comment.file;
+		if (displayPath.length > 70) {
+			const parts = displayPath.split("/");
+			displayPath = `.../${parts.slice(-3).join("/")}`;
 		}
+
+		this.ui.log(
+			theme.secondary(displayPath) +
+				(comment.line ? theme.muted(`:${comment.line}`) : ""),
+		);
+		this.ui.space();
 
 		// Show the actual code lines
 		const codeContext = comment.startLine
@@ -138,26 +137,33 @@ export class CommentFormatter {
 
 		// Comment details with enhanced badges
 		this.ui.space();
+
+		// Consolidated severity + confidence + verification
 		const severityBadge = badges.severity(comment.severity || "suggestion");
-		this.ui.info(severityBadge);
+		const confidenceBadge = comment.confidence
+			? ` ${emoji.target} ${comment.confidence.charAt(0).toUpperCase() + comment.confidence.slice(1)} Confidence`
+			: "";
+		const verifiedBadge = comment.verifiedBy
+			? ` ${emoji.success} Verified`
+			: "";
 
-		// Confidence indicator
-		if (comment.confidence) {
-			const confidenceBadge = badges.confidence(comment.confidence);
-			clack.log.step(confidenceBadge);
+		this.ui.log(severityBadge + theme.muted(confidenceBadge + verifiedBadge));
+		this.ui.space();
+
+		// Message with word wrapping
+		const message = comment.message || "No message provided";
+		const wrappedMessage = this.wordWrap(message, 70);
+		for (const line of wrappedMessage) {
+			this.ui.log(theme.primary(line));
 		}
-
-		// Verification info
-		if (comment.verifiedBy) {
-			clack.log.step(
-				theme.success(`${emoji.success} Verified: ${comment.verifiedBy}`),
-			);
-		}
-
-		clack.log.step(theme.primary(comment.message || "No message provided"));
 
 		if (comment.rationale) {
-			clack.log.step(theme.dim(`Why: ${comment.rationale}`));
+			this.ui.space();
+			this.ui.log(theme.secondary("Why?"));
+			const wrappedRationale = this.wordWrap(comment.rationale, 68);
+			for (const line of wrappedRationale) {
+				this.ui.log(theme.dim(`  ${line}`));
+			}
 		}
 	}
 
@@ -197,5 +203,26 @@ export class CommentFormatter {
 			}
 		}
 		return grouped;
+	}
+
+	private wordWrap(text: string, maxWidth: number): string[] {
+		const words = text.split(" ");
+		const lines: string[] = [];
+		let currentLine = "";
+
+		for (const word of words) {
+			if ((currentLine + word).length > maxWidth && currentLine.length > 0) {
+				lines.push(currentLine.trim());
+				currentLine = word + " ";
+			} else {
+				currentLine += word + " ";
+			}
+		}
+
+		if (currentLine.trim().length > 0) {
+			lines.push(currentLine.trim());
+		}
+
+		return lines;
 	}
 }

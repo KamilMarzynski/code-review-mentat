@@ -140,22 +140,16 @@ export class CommentResolutionManager {
 				continue;
 			}
 
-			console.log("");
-			console.log("─".repeat(60));
-			console.log("");
-
-			// Show progress
-			this.ui.info(
-				theme.primary(`Comment ${i + 1}/${pendingComments.length}:`) +
-					" " +
-					theme.secondary(comment.message.substring(0, 60)) +
-					(comment.message.length > 60 ? "..." : ""),
+			this.ui.space();
+			this.ui.log(
+				theme.primary(`━━━ Comment ${i + 1} of ${pendingComments.length} ━━━`),
 			);
+			this.ui.space();
 
 			// Display comment with context
 			await displayCommentFn(comment);
 
-			console.log("");
+			this.ui.space();
 
 			// Get user decision
 			const action = await clack.select({
