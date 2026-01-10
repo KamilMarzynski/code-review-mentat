@@ -1,6 +1,6 @@
 import * as clack from "@clack/prompts";
 import type { ReviewComment } from "../review/types";
-import { box, theme } from "../ui/theme";
+import { box, emoji, theme } from "../ui/theme";
 import { ui } from "../ui/logger";
 
 export function displayHeader(): void {
@@ -18,7 +18,7 @@ export function displayHeader(): void {
 
 export function displayContext(context: string): void {
 	ui.space();
-	ui.section("🧠 Deep Context");
+	ui.section(`${emoji.brain} Deep Context`);
 	ui.space();
 
 	if (
@@ -52,7 +52,7 @@ export function displayContext(context: string): void {
 
 export function displayComments(comments: ReviewComment[]): void {
 	if (comments && comments.length > 0) {
-		ui.warn(`⚠ Found ${comments.length} observation(s):`);
+		ui.warn(`${emoji.warning} Found ${comments.length} observation(s):`);
 
 		comments.forEach((comment, i) => {
 			ui.log(
@@ -67,6 +67,6 @@ export function displayComments(comments: ReviewComment[]): void {
 			);
 		});
 	} else {
-		ui.success("✓ No issues detected. Code quality acceptable.");
+		ui.success(`${emoji.success} No issues detected. Code quality acceptable.`);
 	}
 }

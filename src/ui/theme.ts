@@ -1,5 +1,35 @@
 import chalk from "chalk";
 
+// Emoji configuration - centralized for consistency
+export const emoji = {
+	// Status indicators
+	success: "✓",
+	warning: "⚠",
+	error: "✗",
+	info: "ℹ️",
+
+	// Severity levels
+	risk: "🔴",
+	issue: "🟠",
+	suggestion: "🔵",
+	nit: "⚪",
+
+	// Common symbols
+	brain: "🧠",
+	file: "📄",
+	chart: "📊",
+	target: "🎯",
+	fire: "🔥",
+	tool: "🔧",
+	refresh: "🔄",
+	pending: "⏳",
+	lightning: "⚡",
+
+	// Arrows
+	arrow: "→",
+	pipe: "│",
+};
+
 // Dune/Mentat theme
 export const theme = {
 	primary: chalk.hex("#D4AF37"), // Gold
@@ -16,17 +46,17 @@ export const theme = {
 export const badges = {
 	severity: (severity: string): string => {
 		const badgeMap: Record<string, string> = {
-			risk: theme.error("🔴 RISK"),
-			issue: theme.warning("🟠 ISSUE"),
-			suggestion: theme.accent("🔵 SUGGESTION"),
-			nit: theme.muted("⚪ NIT"),
+			risk: theme.error(`${emoji.risk} RISK`),
+			issue: theme.warning(`${emoji.issue} ISSUE`),
+			suggestion: theme.accent(`${emoji.suggestion} SUGGESTION`),
+			nit: theme.muted(`${emoji.nit} NIT`),
 		};
-		return badgeMap[severity] || theme.muted("ℹ️ INFO");
+		return badgeMap[severity] || theme.muted(`${emoji.info} INFO`);
 	},
 
 	confidence: (confidence: string): string => {
 		const badgeMap: Record<string, string> = {
-			high: theme.success("🎯 High Confidence"),
+			high: theme.success(`${emoji.target} High Confidence`),
 			medium: theme.accent("○ Medium Confidence"),
 			low: theme.muted("? Low Confidence"),
 		};
@@ -35,8 +65,8 @@ export const badges = {
 
 	status: (status: string): string => {
 		const badgeMap: Record<string, string> = {
-			pending: theme.warning("⏳ Pending"),
-			resolved: theme.success("✓ Resolved"),
+			pending: theme.warning(`${emoji.pending} Pending`),
+			resolved: theme.success(`${emoji.success} Resolved`),
 			ignored: theme.muted("⊘ Ignored"),
 		};
 		return badgeMap[status] || theme.muted(status);
