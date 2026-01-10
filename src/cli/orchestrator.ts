@@ -24,6 +24,12 @@ export class CLIOrchestrator {
 		displayHeader();
 		clack.intro(theme.primary("Initiating Mentat analysis protocol..."));
 
+		// Check for uncommitted changes before proceeding
+		const dirtyWorkspace = await this.prWorkflow.checkWorkspaceClean();
+		if (dirtyWorkspace) {
+			return; // Exit early if workspace is dirty
+		}
+
 		const { cleanup } = await this.prWorkflow.setupCleanupHandlers();
 
 		try {

@@ -61,4 +61,24 @@ export default class GitOperations {
 			modified: status.modified,
 		};
 	}
+
+	async hasUncommittedChanges(): Promise<{
+		hasChanges: boolean;
+		staged: string[];
+		unstaged: string[];
+		untracked: string[];
+	}> {
+		const status = await this.git.status();
+		const staged = status.staged;
+		const unstaged = [...status.modified, ...status.deleted];
+		const untracked = status.not_added;
+
+		return {
+			hasChanges:
+				staged.length > 0 || unstaged.length > 0 || untracked.length > 0,
+			staged,
+			unstaged,
+			untracked,
+		};
+	}
 }

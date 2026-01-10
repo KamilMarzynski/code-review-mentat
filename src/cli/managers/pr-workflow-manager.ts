@@ -12,6 +12,75 @@ export class PRWorkflowManager {
 		private ui: UILogger,
 	) {}
 
+	public async checkWorkspaceClean(): Promise<boolean> {
+		const status = await this.git.hasUncommittedChanges();
+
+		if (!status.hasChanges) {
+			return false; // Workspace is clean
+		}
+
+		// Workspace has uncommitted changes
+		this.ui.space();
+		clack.log.warn(
+			theme.warning("⚠ Uncommitted changes detected in your workspace"),
+		);
+		this.ui.space();
+
+		if (status.staged.length > 0) {
+			clack.log.info(theme.secondary("Staged files:"));
+			for (const file of status.staged.slice(0, 5)) {
+				this.ui.log(theme.muted(`  • ${file}`));
+			}
+			if (status.staged.length > 5) {
+				this.ui.log(theme.muted(`  • ...and ${status.staged.length - 5} more`));
+			}
+			this.ui.space();
+		}
+
+		if (status.unstaged.length > 0) {
+			clack.log.info(theme.secondary("Modified files:"));
+			for (const file of status.unstaged.slice(0, 5)) {
+				this.ui.log(theme.muted(`  • ${file}`));
+			}
+			if (status.unstaged.length > 5) {
+				this.ui.log(
+					theme.muted(`  • ...and ${status.unstaged.length - 5} more`),
+				);
+			}
+			this.ui.space();
+		}
+
+		if (status.untracked.length > 0) {
+			clack.log.info(theme.secondary("Untracked files:"));
+			for (const file of status.untracked.slice(0, 5)) {
+				this.ui.log(theme.muted(`  • ${file}`));
+			}
+			if (status.untracked.length > 5) {
+				this.ui.log(
+					theme.muted(`  • ...and ${status.untracked.length - 5} more`),
+				);
+			}
+			this.ui.space();
+		}
+
+		clack.log.error(
+			theme.error(
+				"✗ Mentat requires a clean working directory to safely switch branches.",
+			),
+		);
+		this.ui.space();
+		clack.log.step(theme.muted("Please save your work first:"));
+		clack.log.step(
+			theme.dim("  • Commit changes: git add . && git commit -m 'WIP'"),
+		);
+		clack.log.step(theme.dim("  • Or stash them: git stash push -m 'WIP'"));
+		this.ui.space();
+
+		clack.outro(theme.muted("Run Mentat again once your workspace is clean."));
+
+		return true; // Workspace is dirty
+	}
+
 	public async setupCleanupHandlers(): Promise<{
 		cleanup: (signal?: string) => Promise<void>;
 		cleanupDone: { value: boolean };
