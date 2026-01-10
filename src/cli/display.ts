@@ -13,7 +13,7 @@ export function displayHeader(): void {
 	ui.log(box.centeredRow(theme.accent("CODE REVIEW MENTAT"), headerWidth));
 	ui.log(
 		box.centeredRow(
-			theme.muted('"It is by will alone I set my mind in motion"'),
+			theme.muted('"It is by caffeine alone I set my mind in motion"'),
 			headerWidth,
 		),
 	);
