@@ -1,4 +1,3 @@
-import * as clack from "@clack/prompts";
 import type GitOperations from "../../git/operations";
 import type { GitProvider, PullRequest } from "../../providers/types";
 import type { UILogger } from "../../ui/logger";
@@ -21,13 +20,13 @@ export class PRWorkflowManager {
 
 		// Workspace has uncommitted changes
 		this.ui.space();
-		clack.log.warn(
+		this.ui.warn(
 			theme.warning("⚠ Uncommitted changes detected in your workspace"),
 		);
 		this.ui.space();
 
 		if (status.staged.length > 0) {
-			clack.log.info(theme.secondary("Staged files:"));
+			this.ui.info(theme.secondary("Staged files:"));
 			for (const file of status.staged.slice(0, 5)) {
 				this.ui.log(theme.muted(`  • ${file}`));
 			}
@@ -38,7 +37,7 @@ export class PRWorkflowManager {
 		}
 
 		if (status.unstaged.length > 0) {
-			clack.log.info(theme.secondary("Modified files:"));
+			this.ui.info(theme.secondary("Modified files:"));
 			for (const file of status.unstaged.slice(0, 5)) {
 				this.ui.log(theme.muted(`  • ${file}`));
 			}
@@ -51,7 +50,7 @@ export class PRWorkflowManager {
 		}
 
 		if (status.untracked.length > 0) {
-			clack.log.info(theme.secondary("Untracked files:"));
+			this.ui.info(theme.secondary("Untracked files:"));
 			for (const file of status.untracked.slice(0, 5)) {
 				this.ui.log(theme.muted(`  • ${file}`));
 			}
@@ -63,20 +62,22 @@ export class PRWorkflowManager {
 			this.ui.space();
 		}
 
-		clack.log.error(
+		this.ui.error(
 			theme.error(
 				"✗ Mentat requires a clean working directory to safely switch branches.",
 			),
 		);
 		this.ui.space();
-		clack.log.step(theme.muted("Please save your work first:"));
-		clack.log.step(
+		this.ui.logStep(theme.muted("Please save your work first:"));
+		this.ui.logStep(
 			theme.dim("  • Commit changes: git add . && git commit -m 'WIP'"),
 		);
-		clack.log.step(theme.dim("  • Or stash them: git stash push -m 'WIP'"));
+		this.ui.logStep(theme.dim("  • Or stash them: git stash push -m 'WIP'"));
 		this.ui.space();
 
-		clack.outro(theme.muted("Run Mentat again once your workspace is clean."));
+		this.ui.outro(
+			theme.muted("Run Mentat again once your workspace is clean."),
+		);
 
 		return true; // Workspace is dirty
 	}
@@ -102,11 +103,11 @@ export class PRWorkflowManager {
 				s.stop(theme.success("✓ Repository state restored"));
 
 				if (signal) {
-					clack.outro(theme.warning(`⚠ Process interrupted (${signal})`));
+					this.ui.outro(theme.warning(`⚠ Process interrupted (${signal})`));
 				}
 			} catch (error) {
 				console.error(error);
-				clack.log.error(
+				this.ui.error(
 					theme.error("⚠ Failed to restore branch state\n") +
 						theme.muted(
 							`   Please manually run: git checkout ${currentBranch}`,
@@ -151,7 +152,9 @@ export class PRWorkflowManager {
 		s2.stop(theme.success(`✓ Retrieved ${prs.length} pull request(s)`));
 
 		if (prs.length === 0) {
-			clack.outro(theme.warning("No pull requests found. Mentat standing by."));
+			this.ui.outro(
+				theme.warning("No pull requests found. Mentat standing by."),
+			);
 			process.exit(0);
 		}
 
@@ -163,12 +166,12 @@ export class PRWorkflowManager {
 
 		// Display selected PR info in consistent format
 		this.ui.space();
-		clack.log.step(theme.primary(`Target: ${selectedPr.title}`));
+		this.ui.logStep(theme.primary(`Target: ${selectedPr.title}`));
 		this.ui.space();
-		clack.log.info(
+		this.ui.info(
 			`${theme.secondary("Source:")} ${selectedPr.source.name} ${theme.muted(`(${selectedPr.source.commitHash.substring(0, 8)})`)}`,
 		);
-		clack.log.info(
+		this.ui.info(
 			`${theme.secondary("Target:")} ${selectedPr.target.name} ${theme.muted(`(${selectedPr.target.commitHash.substring(0, 8)})`)}`,
 		);
 

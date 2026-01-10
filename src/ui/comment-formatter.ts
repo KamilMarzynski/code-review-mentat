@@ -1,4 +1,3 @@
-import * as clack from "@clack/prompts";
 import type { ReviewComment } from "../review/types";
 import type { CodeContextReader } from "./code-context-reader";
 import type { UILogger } from "./logger";

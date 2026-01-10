@@ -1,5 +1,4 @@
 import { createHash, randomUUID } from "node:crypto";
-import * as clack from "@clack/prompts";
 import type LocalCache from "../../cache/local-cache";
 import { getPRKey, type PullRequest } from "../../providers/types";
 import type {
@@ -9,7 +8,11 @@ import type {
 } from "../../review/types";
 import type { UILogger } from "../../ui/logger";
 import { theme } from "../../ui/theme";
-import { promptForPendingCommentsAction } from "../cli-prompts";
+import {
+	promptCommentAction,
+	promptContinueWithAllResolved,
+	promptForPendingCommentsAction,
+} from "../cli-prompts";
 
 export class CommentResolutionManager {
 	constructor(
@@ -39,7 +42,7 @@ export class CommentResolutionManager {
 				rejected: commentsBefore.filter((c) => c.status === "rejected").length,
 			};
 
-			clack.log.success(
+			this.ui.success(
 				theme.success(
 					`✓ All ${commentsBefore.length} comment(s) from previous review are resolved.`,
 				),
@@ -58,16 +61,13 @@ export class CommentResolutionManager {
 			}
 
 			if (summaryParts.length > 0) {
-				clack.log.info(theme.muted(`  ${summaryParts.join(", ")}`));
+				this.ui.info(theme.muted(`  ${summaryParts.join(", ")}`));
 			}
 
-			const shouldContinue = await clack.confirm({
-				message: "Run a new review?",
-				initialValue: false,
-			});
+			const shouldContinue = await promptContinueWithAllResolved();
 
-			if (clack.isCancel(shouldContinue) || !shouldContinue) {
-				clack.outro(
+			if (!shouldContinue) {
+				this.ui.outro(
 					theme.success("✓ Previous review complete. ") +
 						theme.muted("Run the tool again when ready for a new review."),
 				);
@@ -78,7 +78,7 @@ export class CommentResolutionManager {
 		}
 
 		// Case 2: Has pending comments
-		clack.log.info(
+		this.ui.info(
 			theme.warning(
 				`There are ${pendingComments.length} unresolved comment(s) from the last review.`,
 			),
@@ -94,9 +94,7 @@ export class CommentResolutionManager {
 			cacheMetadata?.gatheredFromCommit !== pr.source.commitHash;
 
 		if (hasNewCommits) {
-			clack.log.warn(
-				theme.warning("⚠️  New commits detected since last review."),
-			);
+			this.ui.warn(theme.warning("⚠️  New commits detected since last review."));
 		}
 
 		const action = await promptForPendingCommentsAction(
@@ -133,7 +131,7 @@ export class CommentResolutionManager {
 		);
 
 		if (pendingComments.length === 0) {
-			clack.log.success(theme.success("✓ All comments resolved"));
+			this.ui.success(theme.success("✓ All comments resolved"));
 
 			// Show summary of resolved comments
 			const resolvedSummary = {
@@ -144,22 +142,22 @@ export class CommentResolutionManager {
 
 			if (allComments.length > 0) {
 				console.log("");
-				clack.log.info(theme.secondary("Previous resolution:"));
+				this.ui.info(theme.secondary("Previous resolution:"));
 				if (resolvedSummary.fixed > 0) {
-					clack.log.step(`✓ Fixed: ${resolvedSummary.fixed}`);
+					this.ui.logStep(`✓ Fixed: ${resolvedSummary.fixed}`);
 				}
 				if (resolvedSummary.accepted > 0) {
-					clack.log.step(`✓ Accepted: ${resolvedSummary.accepted}`);
+					this.ui.logStep(`✓ Accepted: ${resolvedSummary.accepted}`);
 				}
 				if (resolvedSummary.rejected > 0) {
-					clack.log.step(`✗ Rejected: ${resolvedSummary.rejected}`);
+					this.ui.logStep(`✗ Rejected: ${resolvedSummary.rejected}`);
 				}
 			}
 
 			return;
 		}
 
-		clack.log.info(
+		this.ui.info(
 			theme.secondary(
 				`Found ${pendingComments.length} pending comment(s) ` +
 					`(${allComments.length} total)`,
@@ -193,39 +191,10 @@ export class CommentResolutionManager {
 			this.ui.space();
 
 			// Get user decision
-			const action = await clack.select({
-				message: theme.primary("What should we do?"),
-				options: [
-					{
-						value: "fix",
-						label: "🔧 Fix with Claude",
-						hint: "Let Claude Code plan and implement a fix",
-					},
-					{
-						value: "accept",
-						label: "✓ Accept",
-						hint: "Accept the comment without changes",
-					},
-					{
-						value: "reject",
-						label: "✗ Reject",
-						hint: "Reject this comment permanently",
-					},
-					{
-						value: "skip",
-						label: "⏭ Skip",
-						hint: "Skip for now, address in next session",
-					},
-					{
-						value: "quit",
-						label: "💤 Quit",
-						hint: "Stop processing and exit",
-					},
-				],
-			});
+			const action = await promptCommentAction();
 
-			if (clack.isCancel(action)) {
-				clack.cancel("Comment resolution cancelled");
+			if (action === null) {
+				this.ui.cancel("Comment resolution cancelled");
 				break;
 			}
 
@@ -241,7 +210,7 @@ export class CommentResolutionManager {
 						status: "accepted",
 					});
 					summary.accepted++;
-					clack.log.success(theme.success("✓ Comment accepted"));
+					this.ui.success(theme.success("✓ Comment accepted"));
 					break;
 
 				case "reject": {
@@ -250,17 +219,17 @@ export class CommentResolutionManager {
 					});
 
 					summary.rejected++;
-					clack.log.step(theme.muted("✗ Comment rejected"));
+					this.ui.logStep(theme.muted("✗ Comment rejected"));
 					break;
 				}
 
 				case "skip":
 					summary.skipped++;
-					clack.log.step(theme.muted("⏭ Comment skipped"));
+					this.ui.logStep(theme.muted("⏭ Comment skipped"));
 					break;
 
 				case "quit":
-					clack.log.info(theme.secondary("Exiting comment resolution..."));
+					this.ui.info(theme.secondary("Exiting comment resolution..."));
 
 					if (summary.fixed + summary.accepted + summary.rejected > 0) {
 						console.log("");
@@ -284,30 +253,30 @@ export class CommentResolutionManager {
 		rejected: number;
 		skipped: number;
 	}): void {
-		clack.log.info(theme.primary("📊 Resolution Summary:"));
+		this.ui.info(theme.primary("📊 Resolution Summary:"));
 
 		const total =
 			summary.accepted + summary.fixed + summary.rejected + summary.skipped;
 
 		if (total === 0) {
-			clack.log.step(theme.dim("No comments were processed"));
+			this.ui.logStep(theme.dim("No comments were processed"));
 			return;
 		}
 
 		if (summary.fixed > 0) {
-			clack.log.step(theme.success(`✓ Fixed: ${summary.fixed}`));
+			this.ui.logStep(theme.success(`✓ Fixed: ${summary.fixed}`));
 		}
 
 		if (summary.accepted > 0) {
-			clack.log.step(theme.success(`✓ Accepted: ${summary.accepted}`));
+			this.ui.logStep(theme.success(`✓ Accepted: ${summary.accepted}`));
 		}
 
 		if (summary.rejected > 0) {
-			clack.log.step(theme.muted(`✗ Rejected: ${summary.rejected}`));
+			this.ui.logStep(theme.muted(`✗ Rejected: ${summary.rejected}`));
 		}
 
 		if (summary.skipped > 0) {
-			clack.log.step(theme.warning(`⏭ Skipped: ${summary.skipped}`));
+			this.ui.logStep(theme.warning(`⏭ Skipped: ${summary.skipped}`));
 		}
 	}
 

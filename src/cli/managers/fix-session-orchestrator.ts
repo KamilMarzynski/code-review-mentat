@@ -1,12 +1,20 @@
 import { exec } from "node:child_process";
 import { promisify } from "node:util";
-import * as clack from "@clack/prompts";
 import type LocalCache from "../../cache/local-cache";
 import type GitOperations from "../../git/operations";
 import type { CommentFixer, FixPlan } from "../../review/comment-fixer";
 import type { ReviewComment } from "../../review/types";
 import type { UILogger } from "../../ui/logger";
 import { theme } from "../../ui/theme";
+import {
+	promptAcceptChanges,
+	promptContinueExecution,
+	promptKeepPartialChanges,
+	promptPlanDecision,
+	promptPlanFeedback,
+	promptRetryPlanning,
+	promptRevertChanges,
+} from "../cli-prompts";
 
 export class FixSessionOrchestrator {
 	constructor(
@@ -66,7 +74,7 @@ export class FixSessionOrchestrator {
 			skipped: number;
 		},
 	): Promise<FixPlan | null> {
-		clack.log.info(theme.primary("📋 Phase 1: Planning"));
+		this.ui.info(theme.primary("📋 Phase 1: Planning"));
 		console.log("");
 
 		let plan: FixPlan | null = null;
@@ -99,28 +107,9 @@ export class FixSessionOrchestrator {
 				console.log("");
 
 				// Get user decision on plan
-				const planDecision = await clack.select({
-					message: "What do you think of this plan?",
-					options: [
-						{
-							value: "approve",
-							label: "✓ Approve",
-							hint: "Let Claude implement this plan",
-						},
-						{
-							value: "refine",
-							label: "🔄 Refine",
-							hint: "Ask Claude to improve the plan",
-						},
-						{
-							value: "reject",
-							label: "✗ Reject",
-							hint: "Cancel fix, mark as rejected",
-						},
-					],
-				});
+				const planDecision = await promptPlanDecision();
 
-				if (clack.isCancel(planDecision)) {
+				if (planDecision === null) {
 					if (comment.id) {
 						await this.cache.updateComment(prKey, comment.id, {
 							status: "rejected",
@@ -142,23 +131,14 @@ export class FixSessionOrchestrator {
 						});
 					}
 					summary.rejected++;
-					clack.log.step(theme.muted("✗ Plan rejected"));
+					this.ui.logStep(theme.muted("✗ Plan rejected"));
 					return null;
 				}
 
 				// planDecision === 'refine'
-				const feedback = await clack.text({
-					message: "What should Claude change in the plan?",
-					placeholder: 'e.g., "Also check for similar issues in other files"',
-					validate: (value) => {
-						if (!value || value.trim().length === 0) {
-							return "Feedback is required for refinement";
-						}
-						return;
-					},
-				});
+				const feedback = await promptPlanFeedback();
 
-				if (clack.isCancel(feedback)) {
+				if (feedback === null) {
 					return null;
 				}
 
@@ -167,12 +147,9 @@ export class FixSessionOrchestrator {
 				spinner.stop(theme.error("✗ Planning failed"));
 				this.ui.error(`Error: ${(error as Error).message}`);
 
-				const retry = await clack.confirm({
-					message: "Try planning again?",
-					initialValue: false,
-				});
+				const retry = await promptRetryPlanning();
 
-				if (!retry || clack.isCancel(retry)) {
+				if (!retry) {
 					if (comment.id) {
 						await this.cache.updateComment(prKey, comment.id, {
 							status: "rejected",
@@ -185,7 +162,7 @@ export class FixSessionOrchestrator {
 		}
 
 		if (!plan) {
-			clack.log.warn(theme.warning("Max plan iterations reached"));
+			this.ui.warn(theme.warning("Max plan iterations reached"));
 			if (comment.id) {
 				await this.cache.updateComment(prKey, comment.id, {
 					status: "rejected",
@@ -212,7 +189,7 @@ export class FixSessionOrchestrator {
 		},
 	): Promise<void> {
 		console.log("");
-		clack.log.info(theme.primary("🔧 Phase 2: Execution"));
+		this.ui.info(theme.primary("🔧 Phase 2: Execution"));
 		console.log("");
 
 		const executionSpinner = this.ui.spinner();
@@ -252,14 +229,11 @@ export class FixSessionOrchestrator {
 
 						case "checkpoint": {
 							executionSpinner.stop();
-							clack.log.info(theme.warning(`⏸️  ${event.message}`));
+							this.ui.info(theme.warning(`⏸️  ${event.message}`));
 
-							const continueDecision = await clack.confirm({
-								message: "Let Claude continue?",
-								initialValue: true,
-							});
+							const continueDecision = await promptContinueExecution();
 
-							if (clack.isCancel(continueDecision) || !continueDecision) {
+							if (!continueDecision) {
 								executionSpinner.start(theme.accent("Stopping..."));
 								return "stop";
 							}
@@ -278,12 +252,11 @@ export class FixSessionOrchestrator {
 
 						executionSpinner.stop();
 
-						const continueDecision = await clack.confirm({
-							message: `Claude has made ${event.toolCount} operations. Continue?`,
-							initialValue: true,
-						});
+						const continueDecision = await promptContinueExecution(
+							`Claude has made ${event.toolCount} operations. Continue?`,
+						);
 
-						if (clack.isCancel(continueDecision) || !continueDecision) {
+						if (!continueDecision) {
 							return "stop";
 						}
 
@@ -298,7 +271,7 @@ export class FixSessionOrchestrator {
 
 			// Handle execution failure/stop
 			if (!result.success) {
-				clack.log.error(theme.error("✗ Execution stopped or failed"));
+				this.ui.error(theme.error("✗ Execution stopped or failed"));
 
 				if (result.error) {
 					this.ui.error(result.error);
@@ -308,18 +281,15 @@ export class FixSessionOrchestrator {
 				if (result.filesModified.length > 0) {
 					const gitDiff = await this.getGitDiff(result.filesModified);
 					console.log("");
-					clack.log.info(theme.secondary("Partial changes made:"));
+					this.ui.info(theme.secondary("Partial changes made:"));
 					console.log(theme.muted(gitDiff));
 					console.log("");
 
-					const keepPartial = await clack.confirm({
-						message: "Keep partial changes?",
-						initialValue: false,
-					});
+					const keepPartial = await promptKeepPartialChanges();
 
-					if (!keepPartial || clack.isCancel(keepPartial)) {
+					if (!keepPartial) {
 						await this.revertChanges(result.filesModified);
-						clack.log.step(theme.muted("Changes reverted"));
+						this.ui.logStep(theme.muted("Changes reverted"));
 					}
 				}
 
@@ -333,35 +303,32 @@ export class FixSessionOrchestrator {
 			}
 
 			// Execution completed successfully
-			clack.log.success(theme.success("✓ Claude completed the implementation"));
+			this.ui.success(theme.success("✓ Claude completed the implementation"));
 
 			if (result.finalThoughts) {
 				console.log("");
-				clack.log.step(theme.dim(result.finalThoughts));
+				this.ui.logStep(theme.dim(result.finalThoughts));
 			}
 
 			// Show what changed
 			if (result.filesModified.length > 0) {
-				clack.log.info(
+				this.ui.info(
 					theme.secondary(`Modified: ${result.filesModified.join(", ")}`),
 				);
 
 				const gitDiff = await this.getGitDiff(result.filesModified);
 				console.log("");
-				clack.log.info(theme.secondary("Changes:"));
+				this.ui.info(theme.secondary("Changes:"));
 				console.log(theme.muted(gitDiff));
 				console.log("");
 			} else {
-				clack.log.warn(theme.warning("No files were modified"));
+				this.ui.warn(theme.warning("No files were modified"));
 			}
 
 			// Final approval from user
-			const acceptChanges = await clack.confirm({
-				message: "Accept these changes?",
-				initialValue: true,
-			});
+			const acceptChanges = await promptAcceptChanges();
 
-			if (clack.isCancel(acceptChanges) || !acceptChanges) {
+			if (!acceptChanges) {
 				await this.revertChanges(result.filesModified);
 				if (comment.id) {
 					await this.cache.updateComment(prKey, comment.id, {
@@ -369,7 +336,7 @@ export class FixSessionOrchestrator {
 					});
 				}
 				summary.rejected++;
-				clack.log.step(
+				this.ui.logStep(
 					theme.muted("✗ Changes reverted, comment marked as rejected"),
 				);
 				return;
@@ -380,7 +347,7 @@ export class FixSessionOrchestrator {
 				await this.cache.updateComment(prKey, comment.id, { status: "fixed" });
 			}
 			summary.fixed++;
-			clack.log.success(
+			this.ui.success(
 				theme.success("✓ Changes accepted, comment marked as fixed"),
 			);
 		} catch (error) {
@@ -393,12 +360,9 @@ export class FixSessionOrchestrator {
 				const modifiedFiles = status.modified;
 
 				if (modifiedFiles.length > 0) {
-					const shouldRevert = await clack.confirm({
-						message: "Revert changes made before the error?",
-						initialValue: true,
-					});
+					const shouldRevert = await promptRevertChanges();
 
-					if (shouldRevert && !clack.isCancel(shouldRevert)) {
+					if (shouldRevert) {
 						await this.revertChanges(modifiedFiles);
 					}
 				}
@@ -454,29 +418,29 @@ export class FixSessionOrchestrator {
 	}
 
 	private displayPlan(plan: FixPlan): void {
-		clack.log.info(theme.primary("Claude's Plan:"));
+		this.ui.info(theme.primary("Claude's Plan:"));
 		console.log("");
 
-		clack.log.step(theme.secondary("Approach:"));
-		clack.log.step(theme.dim(plan.approach));
+		this.ui.logStep(theme.secondary("Approach:"));
+		this.ui.logStep(theme.dim(plan.approach));
 		console.log("");
 
-		clack.log.step(theme.secondary("Steps:"));
+		this.ui.logStep(theme.secondary("Steps:"));
 		plan.steps.forEach((step, i) => {
-			clack.log.step(theme.dim(`  ${i + 1}. ${step}`));
+			this.ui.logStep(theme.dim(`  ${i + 1}. ${step}`));
 		});
 		console.log("");
 
-		clack.log.step(theme.secondary("Files to modify:"));
+		this.ui.logStep(theme.secondary("Files to modify:"));
 		plan.filesAffected.forEach((file) => {
-			clack.log.step(theme.dim(`  • ${file}`));
+			this.ui.logStep(theme.dim(`  • ${file}`));
 		});
 
 		if (plan.potentialRisks.length > 0) {
 			console.log("");
-			clack.log.step(theme.warning("⚠️  Potential risks:"));
+			this.ui.logStep(theme.warning("⚠️  Potential risks:"));
 			plan.potentialRisks.forEach((risk) => {
-				clack.log.step(theme.dim(`  • ${risk}`));
+				this.ui.logStep(theme.dim(`  • ${risk}`));
 			});
 		}
 	}

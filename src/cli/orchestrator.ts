@@ -1,6 +1,6 @@
-import * as clack from "@clack/prompts";
 import type LocalCache from "../cache/local-cache";
 import { getPRKey } from "../providers/types";
+import { ui } from "../ui/logger";
 import { theme } from "../ui/theme";
 import { promptToResolveComments } from "./cli-prompts";
 import { displayHeader } from "./display";
@@ -22,7 +22,7 @@ export class CLIOrchestrator {
 
 	public async run(): Promise<void> {
 		displayHeader();
-		clack.intro(theme.primary("Initiating Mentat analysis protocol..."));
+		ui.intro(theme.primary("Initiating Mentat analysis protocol..."));
 
 		// Check for uncommitted changes before proceeding
 		const dirtyWorkspace = await this.prWorkflow.checkWorkspaceClean();
@@ -90,12 +90,12 @@ export class CLIOrchestrator {
 			}
 
 			if (contextHasError || reviewHasError) {
-				clack.outro(
+				ui.outro(
 					theme.warning("⚠ Mentat completed with errors. ") +
 						theme.muted("Please review the output carefully."),
 				);
 			} else {
-				clack.outro(
+				ui.outro(
 					theme.primary("⚡ Mentat computation complete. ") +
 						theme.muted("The analysis is now in your hands."),
 				);
@@ -114,7 +114,7 @@ export class CLIOrchestrator {
 				const shouldResolve = await promptToResolveComments();
 
 				if (!shouldResolve) {
-					clack.log.info(
+					ui.info(
 						theme.muted(
 							"Comments are saved. You can review them anytime by running the tool again.",
 						),
@@ -126,7 +126,7 @@ export class CLIOrchestrator {
 				return;
 			}
 		} catch (error) {
-			clack.cancel(
+			ui.cancel(
 				theme.error("✗ Mentat encountered an error:\n") +
 					theme.muted(`   ${(error as Error).message}`),
 			);

@@ -160,3 +160,188 @@ export async function promptToResolveComments(): Promise<boolean> {
 
 	return Boolean(shouldResolve);
 }
+
+export async function promptContinueWithAllResolved(): Promise<boolean> {
+	const shouldContinue = await clack.confirm({
+		message: "Run a new review?",
+		initialValue: false,
+	});
+
+	if (clack.isCancel(shouldContinue)) {
+		return false;
+	}
+
+	return Boolean(shouldContinue);
+}
+
+export async function promptCommentAction(): Promise<
+	"fix" | "accept" | "reject" | "skip" | "quit" | null
+> {
+	const action = await clack.select({
+		message: theme.primary("What should we do?"),
+		options: [
+			{
+				value: "fix",
+				label: "🔧 Fix with Claude",
+				hint: "Let Claude Code plan and implement a fix",
+			},
+			{
+				value: "accept",
+				label: "✓ Accept",
+				hint: "Accept the comment without changes",
+			},
+			{
+				value: "reject",
+				label: "✗ Reject",
+				hint: "Reject this comment permanently",
+			},
+			{
+				value: "skip",
+				label: "⏭ Skip",
+				hint: "Skip for now, address in next session",
+			},
+			{
+				value: "quit",
+				label: "💤 Quit",
+				hint: "Stop processing and exit",
+			},
+		],
+	});
+
+	if (clack.isCancel(action)) {
+		return null;
+	}
+
+	return action as "fix" | "accept" | "reject" | "skip" | "quit";
+}
+
+export async function promptPlanDecision(): Promise<
+	"approve" | "refine" | "reject" | null
+> {
+	const planDecision = await clack.select({
+		message: "What do you think of this plan?",
+		options: [
+			{
+				value: "approve",
+				label: "✓ Approve",
+				hint: "Let Claude implement this plan",
+			},
+			{
+				value: "refine",
+				label: "🔄 Refine",
+				hint: "Ask Claude to improve the plan",
+			},
+			{
+				value: "reject",
+				label: "✗ Reject",
+				hint: "Cancel fix, mark as rejected",
+			},
+		],
+	});
+
+	if (clack.isCancel(planDecision)) {
+		return null;
+	}
+
+	return planDecision as "approve" | "refine" | "reject";
+}
+
+export async function promptPlanFeedback(): Promise<string | null> {
+	const feedback = await clack.text({
+		message: "What should Claude change in the plan?",
+		placeholder: 'e.g., "Also check for similar issues in other files"',
+		validate: (value) => {
+			if (!value || value.trim().length === 0) {
+				return "Feedback is required for refinement";
+			}
+			return;
+		},
+	});
+
+	if (clack.isCancel(feedback)) {
+		return null;
+	}
+
+	return (feedback as string).trim();
+}
+
+export async function promptRetryPlanning(): Promise<boolean> {
+	const retry = await clack.confirm({
+		message: "Try planning again?",
+		initialValue: false,
+	});
+
+	if (clack.isCancel(retry)) {
+		return false;
+	}
+
+	return Boolean(retry);
+}
+
+export async function promptContinueExecution(
+	message: string = "Let Claude continue?",
+): Promise<boolean> {
+	const continueDecision = await clack.confirm({
+		message,
+		initialValue: true,
+	});
+
+	if (clack.isCancel(continueDecision)) {
+		return false;
+	}
+
+	return Boolean(continueDecision);
+}
+
+export async function promptKeepPartialChanges(): Promise<boolean> {
+	const keepPartial = await clack.confirm({
+		message: "Keep partial changes?",
+		initialValue: false,
+	});
+
+	if (clack.isCancel(keepPartial)) {
+		return false;
+	}
+
+	return Boolean(keepPartial);
+}
+
+export async function promptAcceptChanges(): Promise<boolean> {
+	const acceptChanges = await clack.confirm({
+		message: "Accept these changes?",
+		initialValue: true,
+	});
+
+	if (clack.isCancel(acceptChanges)) {
+		return false;
+	}
+
+	return Boolean(acceptChanges);
+}
+
+export async function promptRevertChanges(): Promise<boolean> {
+	const shouldRevert = await clack.confirm({
+		message: "Revert changes made before the error?",
+		initialValue: true,
+	});
+
+	if (clack.isCancel(shouldRevert)) {
+		return false;
+	}
+
+	return Boolean(shouldRevert);
+}
+
+export async function promptOptionalNotes(): Promise<string | undefined> {
+	const response = await clack.text({
+		message: "Any optional context/notes for Claude? (press Enter to skip)",
+		placeholder: 'e.g., "Use async/await, not callbacks"',
+	});
+
+	if (clack.isCancel(response)) {
+		return undefined;
+	}
+
+	const text = response as string;
+	return text && text.trim().length > 0 ? text.trim() : undefined;
+}

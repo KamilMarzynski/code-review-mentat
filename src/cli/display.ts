@@ -1,4 +1,3 @@
-import * as clack from "@clack/prompts";
 import type { ReviewComment } from "../review/types";
 import { ui } from "../ui/logger";
 import { box, emoji, theme } from "../ui/theme";
@@ -6,11 +5,9 @@ import { box, emoji, theme } from "../ui/theme";
 export function displayHeader(): void {
 	ui.space();
 	ui.log(box.top());
+	ui.log(box.row(theme.accent("            CODE REVIEW MENTAT            ")));
 	ui.log(
-		box.row(theme.accent("              CODE REVIEW MENTAT              ")),
-	);
-	ui.log(
-		box.row(theme.muted('  "It is by will alone I set my mind in motion"  ')),
+		box.row(theme.muted(' "It is by will alone I set my mind in motion"')),
 	);
 	ui.log(box.bottom());
 	ui.space();

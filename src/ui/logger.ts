@@ -1,6 +1,9 @@
 import * as clack from "@clack/prompts";
 import { box, theme } from "./theme";
 
+// Re-export isCancel for use in other files
+export { isCancel } from "@clack/prompts";
+
 // Reasoning step counter
 let stepCounter = 0;
 
@@ -152,6 +155,34 @@ export class UILogger {
 	 */
 	log(message: string) {
 		console.log(message);
+	}
+
+	/**
+	 * Display an intro message
+	 */
+	intro(message: string) {
+		clack.intro(message);
+	}
+
+	/**
+	 * Display an outro message
+	 */
+	outro(message: string) {
+		clack.outro(message);
+	}
+
+	/**
+	 * Display a cancel message and exit
+	 */
+	cancel(message: string) {
+		clack.cancel(message);
+	}
+
+	/**
+	 * Log a step (uses clack.log.step)
+	 */
+	logStep(message: string) {
+		clack.log.step(message);
 	}
 }
 
