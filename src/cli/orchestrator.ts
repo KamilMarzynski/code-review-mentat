@@ -2,7 +2,10 @@ import type LocalCache from "../cache/local-cache";
 import { getPRKey } from "../git-providers/types";
 import { ui } from "../ui/logger";
 import { theme } from "../ui/theme";
-import { promptToResolveComments } from "./cli-prompts";
+import {
+	promptToResolveComments,
+	promptToSendCommentsToRemote,
+} from "./cli-prompts";
 import { displayHeader } from "./display";
 import type { CommentDisplayService } from "./managers/comment-display-service";
 import type { CommentResolutionManager } from "./managers/comment-resolution-manager";
@@ -123,6 +126,39 @@ export class CLIOrchestrator {
 				}
 
 				await this.handleComments(getPRKey(selectedPr));
+				const commentsAfter = await this.cache.getComments(
+					getPRKey(selectedPr),
+				);
+
+				const acceptedComments = commentsAfter.filter(
+					(c) => c.status === "accepted",
+				);
+
+				if (acceptedComments.length > 0) {
+					const shouldSend = await promptToSendCommentsToRemote();
+
+					if (shouldSend) {
+						try {
+							await this.prWorkflow.postCommentsToRemote(
+								selectedPr,
+								provider,
+								acceptedComments,
+							);
+							ui.success(
+								theme.success(
+									`✓ Posted ${acceptedComments.length} accepted comment(s) to the pull request`,
+								),
+							);
+						} catch (error) {
+							ui.error(
+								theme.error(
+									`✗ Failed to post comments to the pull request: ${(error as Error).message}`,
+								),
+							);
+						}
+					}
+				}
+
 				return;
 			}
 		} catch (error) {

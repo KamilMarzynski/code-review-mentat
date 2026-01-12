@@ -163,6 +163,18 @@ export async function promptToResolveComments(): Promise<boolean> {
 	return Boolean(shouldResolve);
 }
 
+export async function promptToSendCommentsToRemote(): Promise<boolean> {
+	const shouldSend = await clack.confirm({
+		message: "Post accepted comments to the pull request?",
+		initialValue: true,
+	});
+
+	if (clack.isCancel(shouldSend)) {
+		return false;
+	}
+	return Boolean(shouldSend);
+}
+
 export async function promptContinueWithAllResolved(): Promise<boolean> {
 	const shouldContinue = await clack.confirm({
 		message: "Run a new review?",

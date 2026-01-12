@@ -1,5 +1,10 @@
 import type GitOperations from "../../git/operations";
-import type { GitProvider, PullRequest } from "../../git-providers/types";
+import type {
+	CreatePullRequestCommentRequest,
+	GitProvider,
+	PullRequest,
+} from "../../git-providers/types";
+import type { ReviewComment } from "../../review/types";
 import type { UILogger } from "../../ui/logger";
 import { theme } from "../../ui/theme";
 import { promptForPR, promptForRemote } from "../cli-prompts";
@@ -280,5 +285,46 @@ export class PRWorkflowManager {
 		}
 
 		return commitMessages;
+	}
+
+	public async postCommentsToRemote(
+		pr: PullRequest,
+		provider: GitProvider,
+		comments: ReviewComment[],
+	): Promise<void> {
+		if (comments.length === 0) {
+			this.ui.info(theme.muted("No comments to post to remote."));
+			return;
+		}
+
+		const prComments: CreatePullRequestCommentRequest[] = comments.map(
+			(comment) => ({
+				text: `${comment.severity ? `[${comment.severity}] ` : ""}${comment.message}. \n ${comment.rationale} \n _Comment created by Mentat Code Review CLI._`,
+				anchor:
+					comment.file && comment.line
+						? {
+								path: comment.file || "",
+								line: comment.line || 0,
+							}
+						: undefined,
+			}),
+		);
+
+		for (const prComment of prComments) {
+			try {
+				await provider.createPullRequestComment(pr, prComment);
+				this.ui.success(
+					theme.success(
+						`✓ Posted comment to ${prComment.path ? `${prComment.path}:${prComment.line}` : "PR discussion"}`,
+					),
+				);
+			} catch (error) {
+				this.ui.error(
+					theme.error(
+						`✗ Failed to post comment to ${prComment.path ? `${prComment.path}:${prComment.line}` : "PR discussion"}: ${(error as Error).message}`,
+					),
+				);
+			}
+		}
 	}
 }

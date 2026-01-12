@@ -2,6 +2,10 @@ export abstract class GitProvider {
 	abstract name: string;
 	abstract fetchPullRequests(): Promise<PullRequest[]>;
 	abstract fetchCommits(pr: PullRequest): Promise<string[]>;
+	abstract createPullRequestComment(
+		pr: PullRequest,
+		comment: CreatePullRequestCommentRequest,
+	): Promise<CreatedPrComment>;
 
 	static parseRemote(sshRemote: string): RemoteInfo | undefined {
 		const regexpMatchArray = sshRemote
@@ -48,17 +52,23 @@ export interface BranchInfo {
 	commitHash: string;
 }
 
-export type CreatePrCommentInput =
-	| string
-	| {
-			text: string;
-			parentId?: number; // TODO: implement threaded comments
-	  };
+export type CreatePullRequestCommentRequest = {
+	text: string;
+
+	// Reply to an existing comment
+	parentId?: number;
+
+	// Required for any anchored comment
+	path?: string;
+
+	// Line comment fields (optional; if present, it's a line anchor)
+	line?: number;
+
+	severity?: "nit" | "suggestion" | "issue" | "risk";
+};
 
 export type CreatedPrComment = {
 	id: number;
-	text: string;
-	version?: number;
 };
 
 /**

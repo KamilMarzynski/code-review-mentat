@@ -1,12 +1,30 @@
 import {
 	type CreatedPrComment,
-	type CreatePrCommentInput,
+	type CreatePullRequestCommentRequest,
 	GitProvider,
 	type PullRequest,
 	type RemoteInfo,
 } from "./types";
 
 const { BB_TOKEN } = process.env;
+
+enum LineType {
+	CONTEXT = "CONTEXT",
+	ADDED = "ADDED",
+	REMOVED = "REMOVED",
+}
+enum FileType {
+	FROM = "FROM",
+	TO = "TO",
+}
+
+type CreatePullRequestCommentAnchor = {
+	// Required for any anchored comment
+	path: string;
+
+	// Line comment fields (optional; if present, it's a line anchor)
+	line?: number;
+};
 
 export default class BitbucketServerGitProvider implements GitProvider {
 	name = "Bitbucket Server";
@@ -72,57 +90,74 @@ export default class BitbucketServerGitProvider implements GitProvider {
 		return data.values.map((commit: any) => commit.message);
 	}
 
-	async postComments(
+	async createPullRequestComment(
 		pr: PullRequest,
-		comments: CreatePrCommentInput[],
-		opts: { failFast?: boolean } = {},
-	): Promise<CreatedPrComment[]> {
+		comment: CreatePullRequestCommentRequest,
+	): Promise<CreatedPrComment> {
 		if (!BB_TOKEN) {
 			throw new Error("BB_TOKEN is not set");
 		}
 
 		const url = this.buildPullRequestCommentsUrl(pr);
-		const failFast = opts.failFast ?? true;
+		const body: any = {
+			text: comment.text,
+			severity: comment.severity === "risk" ? "BLOCKER" : "NORMAL",
+			version: 1,
+			threadResolved: false,
+		};
 
-		const created: CreatedPrComment[] = [];
-
-		// Sequential preserves comment order on the PR timeline.
-		for (const c of comments) {
-			const text = typeof c === "string" ? c : c.text;
-
-			const body: any = { text };
-
-			const response = await fetch(url, {
-				method: "POST",
-				headers: {
-					Authorization: `Bearer ${BB_TOKEN}`,
-					Accept: "application/json",
-					"Content-Type": "application/json",
-				},
-				body: JSON.stringify(body),
-			});
-
-			if (!response.ok) {
-				const errText = await response.text().catch(() => "");
-				const msg = `Failed to post comment to PR ${pr.title}: ${response.status} ${response.statusText}${
-					errText ? ` - ${errText}` : ""
-				}`;
-				if (failFast) {
-					throw new Error(msg);
-				}
-				continue;
-			}
-
-			const data: any = await response.json();
-
-			created.push({
-				id: data.id,
-				text: data.text ?? text,
-				version: data.version,
-			});
+		if (comment.parentId != null) {
+			body.parent = { id: comment.parentId };
 		}
 
-		return created;
+		if (comment.path) {
+			body.anchor = this.normalizeAnchor({
+				path: comment.path,
+				line: comment.line,
+			});
+		}
+		const response = await fetch(url, {
+			method: "POST",
+			headers: {
+				Accept: "application/json;charset=UTF-8",
+				"Content-Type": "application/json",
+				Authorization: `Bearer ${BB_TOKEN}`,
+			},
+			body: JSON.stringify(body),
+		});
+
+		if (!response.ok) {
+			throw new Error(
+				`Failed to create comment: ${response.status} ${response.statusText}`,
+			);
+		}
+
+		const data: any = await response.json();
+
+		return {
+			id: data.id,
+		};
+	}
+
+	private normalizeAnchor(anchor: CreatePullRequestCommentAnchor) {
+		// path is always required for anchored comments
+		if (!anchor.path) {
+			throw new Error("anchor.path is required");
+		}
+
+		const isLineAnchor = anchor.line != null;
+
+		// Only include defined fields
+		return {
+			path: anchor.path,
+			...(isLineAnchor
+				? {
+						line: anchor.line,
+						lineType: LineType.ADDED,
+						fileType: FileType.FROM,
+					}
+				: {}),
+		};
 	}
 
 	private buildPullRequestCommentsUrl(pr: PullRequest): string {
