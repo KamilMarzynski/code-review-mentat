@@ -1,5 +1,9 @@
 import type LocalCache from "../cache/local-cache";
-import { getPRKey } from "../git-providers/types";
+import {
+	getPRKey,
+	type GitProvider,
+	type PullRequest,
+} from "../git-providers/types";
 import { ui } from "../ui/logger";
 import { theme } from "../ui/theme";
 import {
@@ -30,7 +34,7 @@ export class CLIOrchestrator {
 		// Check for uncommitted changes before proceeding
 		const dirtyWorkspace = await this.prWorkflow.checkWorkspaceClean();
 		if (dirtyWorkspace) {
-			return; // Exit early if workspace is dirty
+			process.exit(1); // Exit cleanly with error code
 		}
 
 		const { cleanup } = await this.prWorkflow.setupCleanupHandlers();
@@ -57,27 +61,31 @@ export class CLIOrchestrator {
 				selectedPr,
 			);
 
-			// Step 7: Determine cache/context strategy first (natural order: data before actions)
-			const cacheConfig =
-				await this.reviewHandler.determineCacheStrategy(selectedPr);
-
-			// Step 8: Check for pending comments from previous review
+			// Step 7: Check for pending comments from previous review
 			const commentAction =
 				await this.commentResolution.checkPendingComments(selectedPr);
 
-			if (commentAction === "handle") {
+			if (commentAction === "handle_comments") {
 				await this.handleComments(getPRKey(selectedPr));
+				return;
+			} else if (!commentAction || commentAction === "none") {
+				// Step 8: Handle existing approved comments from previous reviews
+				await this.handleAcceptedCommentsIfExist(selectedPr, provider);
 				return;
 			}
 
-			// Step 9: Process review stream
+			// Step 9: Determine cache/context strategy first (natural order: data before actions)
+			const contextConfig =
+				await this.reviewHandler.determineContextStrategy(selectedPr);
+
+			// Step 10: Process review stream
 			const { contextHasError, reviewHasError } =
 				await this.reviewHandler.processReviewStream(
 					selectedPr,
 					commitMessages,
 					fullDiff,
 					editedFiles,
-					cacheConfig,
+					contextConfig,
 				);
 
 			console.log(""); // Spacing
@@ -85,8 +93,8 @@ export class CLIOrchestrator {
 			// Check for comments to display summary
 			const comments = await this.cache.getComments(getPRKey(selectedPr));
 
-			// Display review summary if comments exist
 			if (comments.length > 0 && !reviewHasError) {
+				// Display review summary if comments exist
 				console.log("");
 				console.log(theme.muted("─".repeat(60)));
 				this.commentDisplay.displayReviewSummary(comments);
@@ -126,41 +134,10 @@ export class CLIOrchestrator {
 				}
 
 				await this.handleComments(getPRKey(selectedPr));
-				const commentsAfter = await this.cache.getComments(
-					getPRKey(selectedPr),
-				);
-
-				const acceptedComments = commentsAfter.filter(
-					(c) => c.status === "accepted",
-				);
-
-				if (acceptedComments.length > 0) {
-					const shouldSend = await promptToSendCommentsToRemote();
-
-					if (shouldSend) {
-						try {
-							await this.prWorkflow.postCommentsToRemote(
-								selectedPr,
-								provider,
-								acceptedComments,
-							);
-							ui.success(
-								theme.success(
-									`✓ Posted ${acceptedComments.length} accepted comment(s) to the pull request`,
-								),
-							);
-						} catch (error) {
-							ui.error(
-								theme.error(
-									`✗ Failed to post comments to the pull request: ${(error as Error).message}`,
-								),
-							);
-						}
-					}
-				}
-
-				return;
 			}
+
+			await this.handleAcceptedCommentsIfExist(selectedPr, provider);
+			return;
 		} catch (error) {
 			ui.cancel(
 				theme.error("✗ Mentat encountered an error:\n") +
@@ -174,6 +151,42 @@ export class CLIOrchestrator {
 
 			// Always restore branch (for normal exit)
 			await cleanup();
+		}
+	}
+
+	private async handleAcceptedCommentsIfExist(
+		pr: PullRequest,
+		provider: GitProvider,
+	): Promise<void> {
+		const commentsAfter = await this.cache.getComments(getPRKey(pr));
+
+		const acceptedComments = commentsAfter.filter(
+			(c) => c.status === "accepted",
+		);
+
+		if (acceptedComments.length > 0) {
+			const shouldSend = await promptToSendCommentsToRemote();
+
+			if (shouldSend) {
+				try {
+					await this.prWorkflow.postCommentsToRemote(
+						pr,
+						provider,
+						acceptedComments,
+					);
+					ui.success(
+						theme.success(
+							`✓ Posted ${acceptedComments.length} accepted comment(s) to the pull request`,
+						),
+					);
+				} catch (error) {
+					ui.error(
+						theme.error(
+							`✗ Failed to post comments to the pull request: ${(error as Error).message}`,
+						),
+					);
+				}
+			}
 		}
 	}
 

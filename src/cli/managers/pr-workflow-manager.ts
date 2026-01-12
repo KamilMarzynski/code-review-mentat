@@ -125,6 +125,7 @@ export class PRWorkflowManager {
 				if (signal) {
 					process.exit(130); // 130 is standard exit code for SIGINT
 				}
+				process.exit(0);
 			}
 		};
 
@@ -299,14 +300,10 @@ export class PRWorkflowManager {
 
 		const prComments: CreatePullRequestCommentRequest[] = comments.map(
 			(comment) => ({
-				text: `${comment.severity ? `[${comment.severity}] ` : ""}${comment.message}. \n ${comment.rationale} \n _Comment created by Mentat Code Review CLI._`,
-				anchor:
-					comment.file && comment.line
-						? {
-								path: comment.file || "",
-								line: comment.line || 0,
-							}
-						: undefined,
+				text: `${comment.severity ? `_[${comment.severity}]_ ` : ""}${comment.message}. \n **Rationale**: ${comment.rationale} \n \n _Comment created by Mentat Code Review CLI._`,
+				path: comment.file,
+				line: comment.line,
+				severity: comment.severity,
 			}),
 		);
 
@@ -319,6 +316,7 @@ export class PRWorkflowManager {
 					),
 				);
 			} catch (error) {
+				console.log(JSON.stringify(error, null, 2));
 				this.ui.error(
 					theme.error(
 						`✗ Failed to post comment to ${prComment.path ? `${prComment.path}:${prComment.line}` : "PR discussion"}: ${(error as Error).message}`,

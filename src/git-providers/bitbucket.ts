@@ -94,6 +94,10 @@ export default class BitbucketServerGitProvider implements GitProvider {
 		pr: PullRequest,
 		comment: CreatePullRequestCommentRequest,
 	): Promise<CreatedPrComment> {
+		console.log(
+			"Creating Bitbucket Server PR comment...",
+			JSON.stringify(comment, null, 2),
+		);
 		if (!BB_TOKEN) {
 			throw new Error("BB_TOKEN is not set");
 		}
@@ -116,6 +120,10 @@ export default class BitbucketServerGitProvider implements GitProvider {
 				line: comment.line,
 			});
 		}
+		console.log(
+			"Bitbucket Server PR comment body:",
+			JSON.stringify(body, null, 2),
+		);
 		const response = await fetch(url, {
 			method: "POST",
 			headers: {
@@ -127,6 +135,7 @@ export default class BitbucketServerGitProvider implements GitProvider {
 		});
 
 		if (!response.ok) {
+			console.log("Bitbucket Server response:", await response.text());
 			throw new Error(
 				`Failed to create comment: ${response.status} ${response.statusText}`,
 			);
@@ -154,7 +163,7 @@ export default class BitbucketServerGitProvider implements GitProvider {
 				? {
 						line: anchor.line,
 						lineType: LineType.ADDED,
-						fileType: FileType.FROM,
+						fileType: FileType.TO,
 					}
 				: {}),
 		};

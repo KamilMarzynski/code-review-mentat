@@ -22,7 +22,7 @@ export class CommentResolutionManager {
 
 	public async checkPendingComments(
 		pr: PullRequest,
-	): Promise<"handle" | "review" | "none"> {
+	): Promise<"handle_comments" | "re_review" | "none"> {
 		const prKey = getPRKey(pr);
 		const commentsBefore = await this.cache.getComments(prKey);
 
@@ -67,14 +67,10 @@ export class CommentResolutionManager {
 			const shouldContinue = await promptContinueWithAllResolved();
 
 			if (!shouldContinue) {
-				this.ui.outro(
-					theme.success("✓ Previous review complete. ") +
-						theme.muted("Run the tool again when ready for a new review."),
-				);
-				process.exit(0);
+				return "none";
 			}
 
-			return "review";
+			return "re_review";
 		}
 
 		// Case 2: Has pending comments

@@ -45,7 +45,7 @@ export class ReviewStreamHandler {
 		private commentResolution: CommentResolutionManager,
 	) {}
 
-	public async determineCacheStrategy(pr: PullRequest): Promise<{
+	public async determineContextStrategy(pr: PullRequest): Promise<{
 		gatherContext: boolean;
 		refreshCache: boolean;
 	}> {
@@ -70,7 +70,7 @@ export class ReviewStreamHandler {
 		commitMessages: string[],
 		fullDiff: string,
 		editedFiles: string[],
-		cacheConfig: {
+		contextConfig: {
 			gatherContext: boolean;
 			refreshCache: boolean;
 		},
@@ -84,7 +84,7 @@ export class ReviewStreamHandler {
 
 		// Get cached context if not gathering/refreshing
 		let context: string | undefined;
-		if (!cacheConfig.gatherContext && !cacheConfig.refreshCache) {
+		if (!contextConfig.gatherContext && !contextConfig.refreshCache) {
 			const cacheInput = {
 				sourceBranch: pr.source.name,
 				targetBranch: pr.target.name,
@@ -103,7 +103,7 @@ export class ReviewStreamHandler {
 			targetName: pr.target.name,
 			diff: fullDiff,
 			context,
-			...cacheConfig,
+			...contextConfig,
 		});
 
 		for await (const event of events) {
