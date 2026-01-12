@@ -180,7 +180,7 @@ export default class BitbucketServerGitProvider implements GitProvider {
 	}
 
 	private buildPullRequestsUrl(): string {
-		return `https://${this.remote.host}/projects/${encodeURIComponent(
+		return `https://${this.remote.host}/rest/api/1.0/projects/${encodeURIComponent(
 			this.remote.projectKey,
 		)}/repos/${encodeURIComponent(this.remote.repoSlug)}/pull-requests`;
 	}
