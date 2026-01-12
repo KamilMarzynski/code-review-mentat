@@ -1,5 +1,5 @@
 import type LocalCache from "../../cache/local-cache";
-import type { PullRequest } from "../../providers/types";
+import type { PullRequest } from "../../git-providers/types";
 import type { ReviewService } from "../../review/review-service";
 import {
 	type ContextEvent,

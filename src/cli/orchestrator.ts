@@ -1,5 +1,5 @@
 import type LocalCache from "../cache/local-cache";
-import { getPRKey } from "../providers/types";
+import { getPRKey } from "../git-providers/types";
 import { ui } from "../ui/logger";
 import { theme } from "../ui/theme";
 import { promptToResolveComments } from "./cli-prompts";

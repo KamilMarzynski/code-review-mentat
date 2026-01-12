@@ -1,5 +1,5 @@
 import type GitOperations from "../../git/operations";
-import type { GitProvider, PullRequest } from "../../providers/types";
+import type { GitProvider, PullRequest } from "../../git-providers/types";
 import type { UILogger } from "../../ui/logger";
 import { theme } from "../../ui/theme";
 import { promptForPR, promptForRemote } from "../cli-prompts";

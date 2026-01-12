@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import type LocalCache from "../../cache/local-cache";
-import { getPRKey, type PullRequest } from "../../providers/types";
+import { getPRKey, type PullRequest } from "../../git-providers/types";
 import type {
 	ReviewComment,
 	ReviewCommentStatus,

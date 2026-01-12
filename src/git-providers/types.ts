@@ -48,6 +48,19 @@ export interface BranchInfo {
 	commitHash: string;
 }
 
+export type CreatePrCommentInput =
+	| string
+	| {
+			text: string;
+			parentId?: number; // TODO: implement threaded comments
+	  };
+
+export type CreatedPrComment = {
+	id: number;
+	text: string;
+	version?: number;
+};
+
 /**
  * Utility function to generate a consistent PR key for caching and identification
  */

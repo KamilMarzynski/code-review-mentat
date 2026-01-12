@@ -9,7 +9,7 @@ import { ReviewStreamHandler } from "./cli/managers/review-stream-handler";
 import { CLIOrchestrator } from "./cli/orchestrator";
 import GitOperations from "./git/operations";
 import { createMCPClient, getMCPTools } from "./mcp/client";
-import BitbucketServerProvider from "./providers/bitbucket";
+import BitbucketServerGitProvider from "./git-providers/bitbucket";
 import { CodeReviewer } from "./review/code-reviewer";
 import { CommentFixer } from "./review/comment-fixer";
 import { ContextGatherer } from "./review/context-gatherer";
@@ -80,7 +80,7 @@ Provide a structured summary:
 
 	// Provider factory function
 	const createProvider = (remote: string) =>
-		new BitbucketServerProvider(remote);
+		new BitbucketServerGitProvider(remote);
 
 	const prWorkflow = new PRWorkflowManager(git, createProvider, ui);
 	const commentResolution = new CommentResolutionManager(cache, ui);
