@@ -64,7 +64,7 @@ interface WorkflowState {
 **Available Actions Based on State:**
 ```typescript
 type WorkflowAction =
-  | "gather_context"      // Always available
+  | "gather_context"      // Available when there is no context yet
   | "refresh_context"     // Available when context exists but outdated
   | "run_review"          // Always available (with warnings if no context)
   | "handle_pending"      // Available when pendingCount > 0
