@@ -11,6 +11,23 @@ import type { FixSessionOrchestrator } from "../fix-session-orchestrator";
 import type { PRWorkflowManager } from "../pr-workflow-manager";
 import type { ReviewStreamHandler } from "../review-stream-handler";
 
+// Mock UI logger
+const mockSpinner = {
+	start: mock(() => {}),
+	stop: mock(() => {}),
+};
+
+mock.module("../../../ui/logger", () => ({
+	ui: {
+		spinner: mock(() => mockSpinner),
+		success: mock(() => {}),
+		error: mock(() => {}),
+		info: mock(() => {}),
+		outro: mock(() => {}),
+		section: mock(() => {}),
+	},
+}));
+
 /**
  * Unit tests for ActionExecutor
  *
@@ -136,6 +153,9 @@ describe("ActionExecutor", () => {
 
 	describe("executeReview", () => {
 		it("should execute review successfully", async () => {
+			// Mock cache to return no comments (so commentsCreated = 0)
+			mockCache.getComments = mock(async () => []);
+
 			const result = await actionExecutor.executeReview(
 				samplePR,
 				mockProvider,
@@ -153,23 +173,24 @@ describe("ActionExecutor", () => {
 		});
 
 		it("should return comments created during review", async () => {
-			mockCache.getComments = mock(
-				async () =>
-					[
-						{
-							id: "1",
-							file: "test.ts",
-							message: "Test comment",
-							status: "pending",
-						},
-						{
-							id: "2",
-							file: "test.ts",
-							message: "Test comment 2",
-							status: "pending",
-						},
-					] satisfies ReviewCommentWithId[],
-			);
+			// Mock cache to return 2 pending comments
+			const pendingComments: ReviewCommentWithId[] = [
+				{
+					id: "1",
+					file: "test.ts",
+					message: "Test comment",
+					status: "pending",
+					line: 10,
+				},
+				{
+					id: "2",
+					file: "test.ts",
+					message: "Test comment 2",
+					status: "pending",
+					line: 20,
+				},
+			];
+			mockCache.getComments = mock(async () => pendingComments);
 
 			const result = await actionExecutor.executeReview(
 				samplePR,
@@ -403,12 +424,39 @@ describe("ActionExecutor", () => {
 
 	describe("executeGatherContext", () => {
 		it("should execute context gathering", async () => {
+			// Reset the cache set mock to track calls and ensure gather mock is fresh
+			const setCacheMock = mock(() => {});
+			mockCache.set = setCacheMock;
+
+			// Recreate the gather mock for this test to ensure it's fresh
+			mockContextGatherer.gather = mock(async function* () {
+				yield {
+					type: "context_start",
+					metadata: { timestamp: Date.now() },
+				} satisfies ContextEvent;
+				yield {
+					type: "context_data",
+					data: {
+						sourceBranch: "feature",
+						targetBranch: "main",
+						currentCommit: "abc123",
+						context: "Test context",
+					},
+					metadata: { timestamp: Date.now() },
+				} satisfies ContextEvent;
+				yield {
+					type: "context_success",
+					dataSource: "live",
+					metadata: { timestamp: Date.now() },
+				} satisfies ContextEvent;
+			});
+
 			await actionExecutor.executeGatherContext(samplePR, false);
 
 			expect(mockPRWorkflow.fetchCommitHistory).toHaveBeenCalledWith(samplePR);
 			expect(mockPRWorkflow.analyzeChanges).toHaveBeenCalledWith(samplePR);
 			expect(mockContextGatherer.gather).toHaveBeenCalled();
-			expect(mockCache.set).toHaveBeenCalled();
+			expect(setCacheMock).toHaveBeenCalled();
 		});
 
 		it("should handle refresh flag", async () => {
