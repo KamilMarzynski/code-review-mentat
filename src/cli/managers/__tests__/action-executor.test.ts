@@ -156,11 +156,7 @@ describe("ActionExecutor", () => {
 			// Mock cache to return no comments (so commentsCreated = 0)
 			mockCache.getComments = mock(async () => []);
 
-			const result = await actionExecutor.executeReview(
-				samplePR,
-				mockProvider,
-				sampleState,
-			);
+			const result = await actionExecutor.executeReview(samplePR, sampleState);
 
 			expect(mockPRWorkflow.fetchCommitHistory).toHaveBeenCalledWith(samplePR);
 			expect(mockPRWorkflow.analyzeChanges).toHaveBeenCalledWith(samplePR);
@@ -192,11 +188,7 @@ describe("ActionExecutor", () => {
 			];
 			mockCache.getComments = mock(async () => pendingComments);
 
-			const result = await actionExecutor.executeReview(
-				samplePR,
-				mockProvider,
-				sampleState,
-			);
+			const result = await actionExecutor.executeReview(samplePR, sampleState);
 
 			expect(result.commentsCreated).toBe(2);
 			expect(result.hasErrors).toBe(false);
@@ -208,11 +200,7 @@ describe("ActionExecutor", () => {
 				reviewHasError: true,
 			}));
 
-			const result = await actionExecutor.executeReview(
-				samplePR,
-				mockProvider,
-				sampleState,
-			);
+			const result = await actionExecutor.executeReview(samplePR, sampleState);
 
 			expect(result.hasErrors).toBe(true);
 		});
@@ -223,11 +211,7 @@ describe("ActionExecutor", () => {
 				reviewHasError: false,
 			}));
 
-			const result = await actionExecutor.executeReview(
-				samplePR,
-				mockProvider,
-				sampleState,
-			);
+			const result = await actionExecutor.executeReview(samplePR, sampleState);
 
 			expect(result.hasErrors).toBe(true);
 		});
@@ -245,7 +229,7 @@ describe("ActionExecutor", () => {
 					] satisfies ReviewCommentWithId[],
 			);
 
-			await actionExecutor.executeReview(samplePR, mockProvider, sampleState);
+			await actionExecutor.executeReview(samplePR, sampleState);
 
 			expect(mockCommentDisplay.displayReviewSummary).toHaveBeenCalled();
 		});
@@ -255,11 +239,7 @@ describe("ActionExecutor", () => {
 				throw new Error("Network error");
 			});
 
-			const result = await actionExecutor.executeReview(
-				samplePR,
-				mockProvider,
-				sampleState,
-			);
+			const result = await actionExecutor.executeReview(samplePR, sampleState);
 
 			expect(result.hasErrors).toBe(true);
 			expect(result.commentsCreated).toBe(0);
@@ -365,10 +345,7 @@ describe("ActionExecutor", () => {
 					] satisfies ReviewCommentWithId[],
 			);
 
-			const count = await actionExecutor.executeSendAccepted(
-				samplePR,
-				mockProvider,
-			);
+			const count = await actionExecutor.executeSendAccepted(samplePR);
 
 			expect(count).toBe(2);
 			expect(mockPRWorkflow.postCommentsToRemote).toHaveBeenCalled();
@@ -387,10 +364,7 @@ describe("ActionExecutor", () => {
 					] satisfies ReviewCommentWithId[],
 			);
 
-			const count = await actionExecutor.executeSendAccepted(
-				samplePR,
-				mockProvider,
-			);
+			const count = await actionExecutor.executeSendAccepted(samplePR);
 
 			expect(count).toBe(0);
 			expect(mockPRWorkflow.postCommentsToRemote).not.toHaveBeenCalled();
@@ -413,10 +387,7 @@ describe("ActionExecutor", () => {
 				throw new Error("Network error");
 			});
 
-			const count = await actionExecutor.executeSendAccepted(
-				samplePR,
-				mockProvider,
-			);
+			const count = await actionExecutor.executeSendAccepted(samplePR);
 
 			expect(count).toBe(0);
 		});

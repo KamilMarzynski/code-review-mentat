@@ -1,137 +1,52 @@
 import type LocalCache from "../cache/local-cache";
-import { getPRKey, type PullRequest } from "../git-providers/types";
+import type { GitProvider, PullRequest } from "../git-providers/types";
 import { ui } from "../ui/logger";
 import { theme } from "../ui/theme";
-import {
-	promptToResolveComments,
-	promptToSendCommentsToRemote,
-} from "./cli-prompts";
+import { promptWorkflowMenu } from "./cli-prompts";
 import { displayHeader } from "./display";
+import type { ActionExecutor } from "./managers/action-executor";
 import type { CommentDisplayService } from "./managers/comment-display-service";
 import type { CommentResolutionManager } from "./managers/comment-resolution-manager";
 import type { FixSessionOrchestrator } from "./managers/fix-session-orchestrator";
+import type { PostActionHandler } from "./managers/post-action-handler";
 import type { PRWorkflowManager } from "./managers/pr-workflow-manager";
 import type { ReviewStreamHandler } from "./managers/review-stream-handler";
+import type { WorkflowStateManager } from "./managers/workflow-state-manager";
+import type { WorkflowAction } from "./types";
+
+/**
+ * Setup context returned from initial setup phase
+ */
+interface SetupContext {
+	pr: PullRequest;
+	cleanup: () => Promise<void>;
+}
 
 export class CLIOrchestrator {
 	constructor(
 		private prWorkflow: PRWorkflowManager,
-		private reviewHandler: ReviewStreamHandler,
-		private commentResolution: CommentResolutionManager,
-		private fixSession: FixSessionOrchestrator,
-		private commentDisplay: CommentDisplayService,
-		private cache: LocalCache,
+		_reviewHandler: ReviewStreamHandler,
+		_commentResolution: CommentResolutionManager,
+		_fixSession: FixSessionOrchestrator,
+		_commentDisplay: CommentDisplayService,
+		_cache: LocalCache,
+		private stateManager: WorkflowStateManager,
+		private actionExecutor: ActionExecutor,
+		private postActionHandler: PostActionHandler,
 	) {}
 
 	public async run(): Promise<void> {
 		displayHeader();
 		ui.intro(theme.computation("Mentat analysis protocol initiated"));
 
-		// Check for uncommitted changes before proceeding
-		const dirtyWorkspace = await this.prWorkflow.checkWorkspaceClean();
-		if (dirtyWorkspace) {
-			process.exit(1); // Exit cleanly with error code
-		}
-
-		const { cleanup } = await this.prWorkflow.setupCleanupHandlers();
-
 		try {
-			// Step 1-2: Remote selection and PR fetching
-			const selectedRemote = await this.prWorkflow.selectRemote();
-			await this.prWorkflow.setProviderForRemote(selectedRemote);
-			const { prs } = await this.prWorkflow.fetchPullRequests();
+			// Phase 1: Initial Setup
+			const context = await this.initialSetup();
 
-			// Step 3: PR selection
-			const selectedPr = await this.prWorkflow.selectPullRequest(prs);
+			// Phase 2: Main Menu Loop
+			await this.menuLoop(context);
 
-			// Step 4: Repository preparation
-			await this.prWorkflow.prepareRepository(selectedRemote, selectedPr);
-
-			// Step 5: Changes analysis
-			const { fullDiff, editedFiles } =
-				await this.prWorkflow.analyzeChanges(selectedPr);
-
-			// Step 6: Commit history
-			const commitMessages =
-				await this.prWorkflow.fetchCommitHistory(selectedPr);
-
-			// Step 7: Check for pending comments from previous review
-			const commentAction =
-				await this.commentResolution.checkPendingComments(selectedPr);
-
-			if (commentAction === "handle_comments") {
-				await this.handleComments(getPRKey(selectedPr));
-				return;
-			} else if (commentAction === "none") {
-				// Step 8: Handle existing approved comments from previous reviews
-				await this.handleAcceptedCommentsIfExist(selectedPr);
-				return;
-			}
-
-			// Step 9: Determine cache/context strategy first (natural order: data before actions)
-			const contextConfig =
-				await this.reviewHandler.determineContextStrategy(selectedPr);
-
-			// Step 10: Process review stream
-			const { contextHasError, reviewHasError } =
-				await this.reviewHandler.processReviewStream(
-					selectedPr,
-					commitMessages,
-					fullDiff,
-					editedFiles,
-					contextConfig,
-				);
-
-			console.log(""); // Spacing
-
-			// Check for comments to display summary
-			const comments = await this.cache.getComments(getPRKey(selectedPr));
-
-			if (comments.length > 0 && !reviewHasError) {
-				// Display review summary if comments exist
-				console.log("");
-				console.log(theme.muted("─".repeat(60)));
-				this.commentDisplay.displayReviewSummary(comments);
-			}
-
-			if (contextHasError || reviewHasError) {
-				ui.outro(
-					theme.warning("⚠ Computation completed with errors. ") +
-						theme.muted("Review the output above for details."),
-				);
-			} else {
-				ui.outro(
-					theme.computation("⚡ Computation complete. ") +
-						theme.muted("Assessment data synthesized."),
-				);
-			}
-
-			// Check for pending comments to handle
-			const pendingComments = comments.filter(
-				(c) => c.status === "pending" || !c.status,
-			);
-
-			if (pendingComments.length > 0) {
-				console.log("");
-				console.log(theme.muted("─".repeat(60)));
-				console.log("");
-
-				const shouldResolve = await promptToResolveComments();
-
-				if (!shouldResolve) {
-					ui.info(
-						theme.muted(
-							"Comments are saved. You can review them anytime by running the tool again.",
-						),
-					);
-					return;
-				}
-
-				await this.handleComments(getPRKey(selectedPr));
-			}
-
-			await this.handleAcceptedCommentsIfExist(selectedPr);
-			return;
+			// Phase 3: Cleanup handled in finally block
 		} catch (error) {
 			ui.cancel(
 				theme.error("✗ Mentat encountered an error:\n") +
@@ -142,59 +57,178 @@ export class CLIOrchestrator {
 			// Remove signal handlers to prevent double cleanup
 			process.removeAllListeners("SIGINT");
 			process.removeAllListeners("SIGTERM");
-
-			// Always restore branch (for normal exit)
-			await cleanup();
 		}
 	}
 
-	private async handleAcceptedCommentsIfExist(pr: PullRequest): Promise<void> {
-		const commentsAfter = await this.cache.getComments(getPRKey(pr));
+	/**
+	 * Phase 1: Initial Setup
+	 * - Check workspace
+	 * - Select remote and PR
+	 * - Prepare repository
+	 * - Set up cleanup handlers
+	 */
+	private async initialSetup(): Promise<SetupContext> {
+		// Check for uncommitted changes before proceeding
+		const dirtyWorkspace = await this.prWorkflow.checkWorkspaceClean();
+		if (dirtyWorkspace) {
+			process.exit(1); // Exit cleanly with error code
+		}
 
-		const acceptedComments = commentsAfter.filter(
-			(c) => c.status === "accepted",
-		);
+		const { cleanup } = await this.prWorkflow.setupCleanupHandlers();
 
-		if (acceptedComments.length > 0) {
-			const shouldSend = await promptToSendCommentsToRemote();
+		// Remote selection and PR fetching
+		const selectedRemote = await this.prWorkflow.selectRemote();
+		await this.prWorkflow.setProviderForRemote(selectedRemote);
+		const { prs } = await this.prWorkflow.fetchPullRequests();
 
-			if (shouldSend) {
-				try {
-					await this.prWorkflow.postCommentsToRemote(pr, acceptedComments);
-					ui.success(
-						theme.success(
-							`✓ Posted ${acceptedComments.length} accepted comment(s) to the pull request`,
-						),
-					);
-				} catch (error) {
-					ui.error(
-						theme.error(
-							`✗ Failed to post comments to the pull request: ${(error as Error).message}`,
-						),
-					);
+		// PR selection
+		const selectedPr = await this.prWorkflow.selectPullRequest(prs);
+
+		// Repository preparation
+		await this.prWorkflow.prepareRepository(selectedRemote, selectedPr);
+
+		return {
+			pr: selectedPr,
+			cleanup,
+		};
+	}
+
+	/**
+	 * Phase 2: Main Menu Loop
+	 * - Detect workflow state
+	 * - Show menu
+	 * - Execute actions
+	 * - Handle post-action flows
+	 */
+	private async menuLoop(context: SetupContext): Promise<void> {
+		let shouldContinue = true;
+
+		try {
+			while (shouldContinue) {
+				// 1. Detect current state
+				const state = await this.stateManager.detectState(context.pr);
+
+				// 2. Get available actions
+				const actions = this.stateManager.getAvailableActions(state);
+
+				// 3. Generate menu options
+				const options = this.stateManager.generateMenuOptions(state, actions);
+
+				// 4. Show menu and get user choice
+				const action = await promptWorkflowMenu(options);
+
+				// 5. Handle exit
+				if (action === "exit") {
+					shouldContinue = false;
+					break;
+				}
+
+				// 6. Execute action
+				await this.executeAction(action, context, state);
+
+				// 7. Handle post-action smart flow
+				const nextAction = await this.handlePostAction(action, context);
+
+				// 8. If next action specified, execute it (smart flow)
+				if (nextAction !== "show_menu") {
+					await this.executeAction(nextAction, context, state);
 				}
 			}
+		} finally {
+			// Always restore branch (for normal exit or errors)
+			await context.cleanup();
 		}
 	}
 
-	private async handleComments(prKey: string): Promise<void> {
-		await this.commentResolution.handleComments(
-			prKey,
-			async (comment, prKey, summary) => {
-				// Get optional notes for Claude
-				const optionalNotes = await this.commentDisplay.promptOptionalNotes();
+	/**
+	 * Execute a workflow action
+	 */
+	private async executeAction(
+		action: WorkflowAction,
+		context: SetupContext,
+		_state: unknown, // WorkflowState from state detection (not used directly here)
+	): Promise<void> {
+		switch (action) {
+			case "gather_context":
+				await this.actionExecutor.executeGatherContext(context.pr, false);
+				break;
 
-				// Run the fix session (planning + execution)
-				await this.fixSession.runFixSession(
-					comment,
-					prKey,
-					optionalNotes,
-					summary,
+			case "refresh_context":
+				await this.actionExecutor.executeGatherContext(context.pr, true);
+				break;
+
+			case "run_review":
+				await this.actionExecutor.executeReview(
+					context.pr,
+					await this.stateManager.detectState(context.pr),
 				);
-			},
-			async (comment) => {
-				await this.commentDisplay.displayCommentWithContext(comment);
-			},
-		);
+				break;
+
+			case "handle_pending":
+				await this.actionExecutor.executeHandlePending(context.pr);
+				break;
+
+			case "send_accepted":
+				await this.actionExecutor.executeSendAccepted(context.pr);
+				break;
+
+			case "exit":
+				// Should not reach here (handled in menuLoop)
+				break;
+
+			default:
+				throw new Error(`Unknown action: ${action}`);
+		}
+	}
+
+	/**
+	 * Handle post-action flow and return next action or "show_menu"
+	 */
+	private async handlePostAction(
+		action: WorkflowAction,
+		context: SetupContext,
+	): Promise<WorkflowAction | "show_menu"> {
+		switch (action) {
+			case "gather_context":
+			case "refresh_context":
+				return await this.postActionHandler.afterContextGathered(context.pr);
+
+			case "run_review": {
+				// We need to get the review result, but ActionExecutor already executed
+				// For now, we'll pass a simple result structure
+				// This will be improved when we refactor to return results
+				const state = await this.stateManager.detectState(context.pr);
+				const result = {
+					commentsCreated: state.pendingCount,
+					hasErrors: false,
+				};
+				return await this.postActionHandler.afterReviewCompleted(
+					result,
+					context.pr,
+				);
+			}
+
+			case "handle_pending": {
+				// Similar issue - we'll detect the state to get the result
+				const state = await this.stateManager.detectState(context.pr);
+				const result = {
+					processed: 0, // We don't track this currently
+					fixed: state.fixedCount,
+					accepted: state.acceptedCount,
+					rejected: state.rejectedCount,
+					skipped: 0,
+				};
+				return await this.postActionHandler.afterPendingHandled(
+					result,
+					context.pr,
+				);
+			}
+
+			case "send_accepted":
+				return await this.postActionHandler.afterAcceptedSent(context.pr);
+
+			default:
+				return "show_menu";
+		}
 	}
 }

@@ -207,7 +207,6 @@ export class ActionExecutor {
 	 */
 	async executeReview(
 		pr: PullRequest,
-		_provider: GitProvider,
 		_state: WorkflowState,
 	): Promise<ReviewResult> {
 		const prKey = getPRKey(pr);
@@ -220,9 +219,9 @@ export class ActionExecutor {
 			const { fullDiff, editedFiles } =
 				await this.prWorkflow.analyzeChanges(pr);
 
-			// Determine context strategy
-			const contextConfig =
-				await this.reviewHandler.determineContextStrategy(pr);
+			// // Determine context strategy
+			// const contextConfig =
+			// 	await this.reviewHandler.determineContextStrategy(pr);
 
 			// Process review stream
 			const { contextHasError, reviewHasError } =
@@ -231,7 +230,11 @@ export class ActionExecutor {
 					commitMessages,
 					fullDiff,
 					editedFiles,
-					contextConfig,
+					{
+						//TODO: refactor this
+						gatherContext: false,
+						refreshCache: false,
+					},
 				);
 
 			console.log(""); // Spacing
@@ -344,10 +347,7 @@ export class ActionExecutor {
 	 * @param provider - Git provider for the PR
 	 * @returns Number of comments sent
 	 */
-	async executeSendAccepted(
-		pr: PullRequest,
-		_provider: GitProvider,
-	): Promise<number> {
+	async executeSendAccepted(pr: PullRequest): Promise<number> {
 		const prKey = getPRKey(pr);
 
 		try {

@@ -1,11 +1,14 @@
 import { ChatAnthropic } from "@langchain/anthropic";
 import { createAgent } from "langchain";
 import LocalCache from "./cache/local-cache";
+import { ActionExecutor } from "./cli/managers/action-executor";
 import { CommentDisplayService } from "./cli/managers/comment-display-service";
 import { CommentResolutionManager } from "./cli/managers/comment-resolution-manager";
 import { FixSessionOrchestrator } from "./cli/managers/fix-session-orchestrator";
+import { PostActionHandler } from "./cli/managers/post-action-handler";
 import { PRWorkflowManager } from "./cli/managers/pr-workflow-manager";
 import { ReviewStreamHandler } from "./cli/managers/review-stream-handler";
+import { WorkflowStateManager } from "./cli/managers/workflow-state-manager";
 import { CLIOrchestrator } from "./cli/orchestrator";
 import GitOperations from "./git/operations";
 import BitbucketServerGitProvider from "./git-providers/bitbucket";
@@ -93,6 +96,20 @@ Provide a structured summary:
 	const fixSession = new FixSessionOrchestrator(commentFixer, git, cache, ui);
 	const commentDisplay = new CommentDisplayService(ui);
 
+	// Initialize Phase 1-4 managers
+	const stateManager = new WorkflowStateManager(cache);
+	const contextGatherer = await createContextGatherer();
+	const actionExecutor = new ActionExecutor(
+		prWorkflow,
+		reviewHandler,
+		commentResolution,
+		fixSession,
+		commentDisplay,
+		contextGatherer,
+		cache,
+	);
+	const postActionHandler = new PostActionHandler(stateManager);
+
 	// Initialize and run orchestrator
 	const orchestrator = new CLIOrchestrator(
 		prWorkflow,
@@ -101,6 +118,9 @@ Provide a structured summary:
 		fixSession,
 		commentDisplay,
 		cache,
+		stateManager,
+		actionExecutor,
+		postActionHandler,
 	);
 
 	let mcpClient: Awaited<typeof mcpInitPromise>["mcpClient"] | null = null;
