@@ -3,6 +3,7 @@ import type { RemoteWithRefs } from "simple-git";
 import type { CachedContext } from "../cache/local-cache";
 import type { PullRequest } from "../git-providers/types";
 import { theme } from "../ui/theme";
+import type { MenuOption, WorkflowAction } from "./types";
 
 export async function promptForRemote(
 	remotes: RemoteWithRefs[],
@@ -358,4 +359,58 @@ export async function promptOptionalNotes(): Promise<string | undefined> {
 
 	const text = response as string;
 	return text && text.trim().length > 0 ? text.trim() : undefined;
+}
+
+/**
+ * Display workflow menu with contextual options
+ *
+ * Features:
+ * - Shows recommendations with ⭐
+ * - Displays hints for each option
+ * - Shows warnings (⚠) for actions that might not be optimal
+ * - Handles cancellation gracefully
+ *
+ * @param options - Array of menu options to display
+ * @returns The selected workflow action
+ */
+export async function promptWorkflowMenu(
+	options: MenuOption[],
+): Promise<WorkflowAction> {
+	// Format options for clack
+	const clackOptions = options.map((option) => {
+		let label = option.label;
+
+		// Add recommendation indicator
+		if (option.recommended) {
+			label = `⭐ ${label}`;
+		}
+
+		// Format hint with warning if present
+		let hint = option.hint;
+		if (option.warningHint && hint) {
+			hint = theme.warning(hint);
+		} else if (hint && option.recommended) {
+			hint = theme.success(hint);
+		} else if (hint) {
+			hint = theme.muted(hint);
+		}
+
+		return {
+			value: option.value,
+			label: option.recommended ? theme.primary(label) : label,
+			hint,
+		};
+	});
+
+	const selectedAction = await clack.select({
+		message: theme.accent("What would you like to do?"),
+		options: clackOptions,
+	});
+
+	if (clack.isCancel(selectedAction)) {
+		clack.cancel(theme.error("Operation cancelled."));
+		process.exit(0);
+	}
+
+	return selectedAction as WorkflowAction;
 }
