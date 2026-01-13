@@ -291,16 +291,8 @@ export class ActionExecutor {
 	async executeHandlePending(pr: PullRequest): Promise<HandleCommentsResult> {
 		const prKey = getPRKey(pr);
 
-		const summary: HandleCommentsResult = {
-			processed: 0,
-			fixed: 0,
-			accepted: 0,
-			rejected: 0,
-			skipped: 0,
-		};
-
 		try {
-			await this.commentResolution.handleComments(
+			const result = await this.commentResolution.handleComments(
 				prKey,
 				async (comment, prKey, interimSummary) => {
 					// Get optional notes for Claude
@@ -313,30 +305,25 @@ export class ActionExecutor {
 						optionalNotes,
 						interimSummary,
 					);
-
-					// Update our summary
-					summary.fixed = interimSummary.fixed;
-					summary.accepted = interimSummary.accepted;
-					summary.rejected = interimSummary.rejected;
-					summary.skipped = interimSummary.skipped;
-					summary.processed =
-						interimSummary.fixed +
-						interimSummary.accepted +
-						interimSummary.rejected +
-						interimSummary.skipped;
 				},
 				async (comment) => {
 					await this.commentDisplay.displayCommentWithContext(comment);
 				},
 			);
 
-			return summary;
+			return result;
 		} catch (error) {
 			ui.error(
 				theme.error("✗ Comment handling failed:\n") +
 					theme.muted(`   ${(error as Error).message}`),
 			);
-			return summary;
+			return {
+				processed: 0,
+				fixed: 0,
+				accepted: 0,
+				rejected: 0,
+				skipped: 0,
+			};
 		}
 	}
 

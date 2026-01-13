@@ -1,6 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
 import type LocalCache from "../../cache/local-cache";
-import { getPRKey, type PullRequest } from "../../git-providers/types";
 import type {
 	ReviewComment,
 	ReviewCommentStatus,
@@ -8,99 +7,78 @@ import type {
 } from "../../review/types";
 import type { UILogger } from "../../ui/logger";
 import { theme } from "../../ui/theme";
-import {
-	promptCommentAction,
-	promptContinueWithAllResolved,
-	promptForPendingCommentsAction,
-} from "../cli-prompts";
+import { promptCommentAction } from "../cli-prompts";
+import type { HandleCommentsResult } from "../types";
 
+/**
+ * Manages comment resolution workflow
+ *
+ * Responsibilities:
+ * - Retrieve comment state and statistics (pure data retrieval)
+ * - Execute comment handling workflow
+ * - Save and merge comments with status tracking
+ */
 export class CommentResolutionManager {
 	constructor(
 		private cache: LocalCache,
 		private ui: UILogger,
 	) {}
 
-	public async checkPendingComments(
-		pr: PullRequest,
-	): Promise<"handle_comments" | "review" | "none"> {
-		const prKey = getPRKey(pr);
-		const commentsBefore = await this.cache.getComments(prKey);
+	/**
+	 * Get comprehensive state of all comments for a PR
+	 * Pure data retrieval - no user interaction
+	 */
+	public async getCommentsState(prKey: string): Promise<{
+		total: number;
+		pending: number;
+		accepted: number;
+		fixed: number;
+		rejected: number;
+		comments: ReviewCommentWithId[];
+	}> {
+		const comments = await this.cache.getComments(prKey);
 
-		if (commentsBefore.length === 0) {
-			return "review";
-		}
-
-		const pendingComments = commentsBefore.filter(
-			(c) => c.status === "pending" || !c.status,
-		);
-
-		// Case 1: All comments are resolved
-		if (pendingComments.length === 0) {
-			const resolvedSummary = {
-				accepted: commentsBefore.filter((c) => c.status === "accepted").length,
-				fixed: commentsBefore.filter((c) => c.status === "fixed").length,
-				rejected: commentsBefore.filter((c) => c.status === "rejected").length,
-			};
-
-			this.ui.success(
-				theme.success(
-					`✓ All ${commentsBefore.length} comment(s) from previous review are resolved.`,
-				),
-			);
-
-			// Show resolution summary
-			const summaryParts: string[] = [];
-			if (resolvedSummary.fixed > 0) {
-				summaryParts.push(`${resolvedSummary.fixed} fixed`);
-			}
-			if (resolvedSummary.accepted > 0) {
-				summaryParts.push(`${resolvedSummary.accepted} accepted`);
-			}
-			if (resolvedSummary.rejected > 0) {
-				summaryParts.push(`${resolvedSummary.rejected} rejected`);
-			}
-
-			if (summaryParts.length > 0) {
-				this.ui.info(theme.muted(`  ${summaryParts.join(", ")}`));
-			}
-
-			const shouldContinue = await promptContinueWithAllResolved();
-
-			if (!shouldContinue) {
-				return "none";
-			}
-
-			return "review";
-		}
-
-		// Case 2: Has pending comments
-		this.ui.info(
-			theme.warning(
-				`There are ${pendingComments.length} unresolved comment(s) from the last review.`,
-			),
-		);
-
-		// Check if there are new commits since last review
-		const cacheInput = {
-			sourceBranch: pr.source.name,
-			targetBranch: pr.target.name,
+		return {
+			total: comments.length,
+			pending: comments.filter((c) => c.status === "pending" || !c.status)
+				.length,
+			accepted: comments.filter((c) => c.status === "accepted").length,
+			fixed: comments.filter((c) => c.status === "fixed").length,
+			rejected: comments.filter((c) => c.status === "rejected").length,
+			comments,
 		};
-		const cacheMetadata = this.cache.getMetadata(cacheInput);
-		const hasNewCommits =
-			cacheMetadata?.gatheredFromCommit !== pr.source.commitHash;
-
-		if (hasNewCommits) {
-			this.ui.warn(theme.warning("⚠️  New commits detected since last review."));
-		}
-
-		const action = await promptForPendingCommentsAction(
-			pendingComments.length,
-			hasNewCommits,
-		);
-
-		return action;
 	}
 
+	/**
+	 * Get only pending comments
+	 * Pure data retrieval - no user interaction
+	 */
+	public async getPendingComments(
+		prKey: string,
+	): Promise<ReviewCommentWithId[]> {
+		const comments = await this.cache.getComments(prKey);
+		return comments.filter((c) => c.status === "pending" || !c.status);
+	}
+
+	/**
+	 * Get only accepted comments
+	 * Pure data retrieval - no user interaction
+	 */
+	public async getAcceptedComments(
+		prKey: string,
+	): Promise<ReviewCommentWithId[]> {
+		const comments = await this.cache.getComments(prKey);
+		return comments.filter((c) => c.status === "accepted");
+	}
+
+	/**
+	 * Execute comment resolution workflow
+	 * Returns structured result for use by orchestrator/post-action handlers
+	 */
+	/**
+	 * Execute comment resolution workflow
+	 * Returns structured result for use by orchestrator/post-action handlers
+	 */
 	public async handleComments(
 		prKey: string,
 		onFixRequested: (
@@ -114,7 +92,7 @@ export class CommentResolutionManager {
 			},
 		) => Promise<void>,
 		displayCommentFn: (comment: ReviewComment) => Promise<void>,
-	): Promise<void> {
+	): Promise<HandleCommentsResult> {
 		console.log("");
 		this.ui.section("Comment Resolution");
 
@@ -150,7 +128,13 @@ export class CommentResolutionManager {
 				}
 			}
 
-			return;
+			return {
+				processed: 0,
+				fixed: 0,
+				accepted: 0,
+				rejected: 0,
+				skipped: 0,
+			};
 		}
 
 		this.ui.info(
@@ -233,7 +217,13 @@ export class CommentResolutionManager {
 					}
 
 					this.ui.sectionComplete("Comment resolution paused");
-					return;
+					return {
+						processed: summary.fixed + summary.accepted + summary.rejected,
+						fixed: summary.fixed,
+						accepted: summary.accepted,
+						rejected: summary.rejected,
+						skipped: summary.skipped,
+					};
 			}
 		}
 
@@ -241,6 +231,14 @@ export class CommentResolutionManager {
 		console.log("");
 		this.displayResolutionSummary(summary);
 		this.ui.sectionComplete("Comment resolution complete");
+
+		return {
+			processed: summary.fixed + summary.accepted + summary.rejected,
+			fixed: summary.fixed,
+			accepted: summary.accepted,
+			rejected: summary.rejected,
+			skipped: summary.skipped,
+		};
 	}
 
 	public displayResolutionSummary(summary: {

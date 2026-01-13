@@ -95,7 +95,13 @@ describe("ActionExecutor", () => {
 		} as unknown as ReviewStreamHandler;
 
 		mockCommentResolution = {
-			handleComments: mock(async () => {}),
+			handleComments: mock(async () => ({
+				processed: 0,
+				fixed: 0,
+				accepted: 0,
+				rejected: 0,
+				skipped: 0,
+			})),
 		} as unknown as CommentResolutionManager;
 
 		mockFixSession = {
@@ -250,58 +256,20 @@ describe("ActionExecutor", () => {
 		});
 
 		it("should track comment resolution summary", async () => {
-			let callbackFn: (
-				comment: {
-					filePath: string;
-					lineNumber: number;
-					suggestion: string;
-				},
-				prKey: string,
-				summary: {
-					accepted: number;
-					fixed: number;
-					rejected: number;
-					skipped: number;
-				},
-			) => Promise<void>;
-
-			mockCommentResolution.handleComments = mock(async (_prKey, callback) => {
-				callbackFn = callback;
+			// Mock handleComments to return a specific result
+			mockCommentResolution.handleComments = mock(async () => {
+				return {
+					processed: 4,
+					fixed: 1,
+					accepted: 2,
+					rejected: 1,
+					skipped: 0,
+				};
 			});
 
-			// Mock runFixSession to mutate the interimSummary object
-			mockFixSession.runFixSession = mock(
-				async (_comment, _prKey, _notes, summary) => {
-					if (summary) {
-						summary.fixed = 1;
-						summary.accepted = 2;
-						summary.rejected = 1;
-						summary.skipped = 0;
-					}
-				},
-			);
+			const result = await actionExecutor.executeHandlePending(samplePR);
 
-			const resultPromise = actionExecutor.executeHandlePending(samplePR);
-
-			// Simulate callback being called
-			await new Promise((resolve) => setTimeout(resolve, 10));
-
-			// biome-ignore lint/style/noNonNullAssertion: Test requires callback to be set
-			if (callbackFn!) {
-				const summary = { accepted: 0, fixed: 0, rejected: 0, skipped: 0 };
-				await callbackFn(
-					{
-						filePath: "test.ts",
-						lineNumber: 10,
-						suggestion: "Fix suggestion",
-					},
-					"test-pr-key",
-					summary,
-				);
-			}
-
-			const result = await resultPromise;
-
+			expect(mockCommentResolution.handleComments).toHaveBeenCalled();
 			expect(result.fixed).toBe(1);
 			expect(result.accepted).toBe(2);
 			expect(result.rejected).toBe(1);
