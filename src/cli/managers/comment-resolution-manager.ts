@@ -22,12 +22,12 @@ export class CommentResolutionManager {
 
 	public async checkPendingComments(
 		pr: PullRequest,
-	): Promise<"handle_comments" | "re_review" | "none"> {
+	): Promise<"handle_comments" | "review" | "none"> {
 		const prKey = getPRKey(pr);
 		const commentsBefore = await this.cache.getComments(prKey);
 
 		if (commentsBefore.length === 0) {
-			return "none";
+			return "review";
 		}
 
 		const pendingComments = commentsBefore.filter(
@@ -70,7 +70,7 @@ export class CommentResolutionManager {
 				return "none";
 			}
 
-			return "re_review";
+			return "review";
 		}
 
 		// Case 2: Has pending comments

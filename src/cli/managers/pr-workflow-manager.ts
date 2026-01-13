@@ -10,14 +10,21 @@ import { theme } from "../../ui/theme";
 import { promptForPR, promptForRemote } from "../cli-prompts";
 
 export class PRWorkflowManager {
+	private provider: GitProvider | null = null;
+
 	constructor(
 		private git: GitOperations,
+		// TODO: Inject a factory or use a provider registry
 		private createProvider: (remote: string) => GitProvider,
 		private ui: UILogger,
 	) {}
 
 	private readonly MAX_DISPLAYED_FILES = 4;
 	private readonly MAX_DISPLAYED_COMMITS = 4;
+
+	public async setProviderForRemote(remote: string): Promise<void> {
+		this.provider = this.createProvider(remote);
+	}
 
 	public async checkWorkspaceClean(): Promise<boolean> {
 		const status = await this.git.hasUncommittedChanges();
@@ -149,14 +156,14 @@ export class PRWorkflowManager {
 		return promptForRemote(allRemotes);
 	}
 
-	public async fetchPullRequests(
-		remote: string,
-	): Promise<{ provider: GitProvider; prs: PullRequest[] }> {
+	public async fetchPullRequests(): Promise<{ prs: PullRequest[] }> {
+		if (!this.provider) {
+			throw new Error("Git provider not set. Call setProviderForRemote first.");
+		}
 		const s2 = this.ui.spinner();
 		s2.start(theme.muted("Querying pull requests from remote"));
 
-		const provider = this.createProvider(remote);
-		const prs = await provider.fetchPullRequests();
+		const prs = await this.provider.fetchPullRequests();
 
 		s2.stop(theme.success(`✓ Retrieved ${prs.length} pull request(s)`));
 
@@ -167,7 +174,7 @@ export class PRWorkflowManager {
 			process.exit(0);
 		}
 
-		return { provider, prs };
+		return { prs };
 	}
 
 	public async selectPullRequest(prs: PullRequest[]): Promise<PullRequest> {
@@ -254,13 +261,13 @@ export class PRWorkflowManager {
 		return { fullDiff, editedFiles };
 	}
 
-	public async fetchCommitHistory(
-		provider: GitProvider,
-		pr: PullRequest,
-	): Promise<string[]> {
+	public async fetchCommitHistory(pr: PullRequest): Promise<string[]> {
+		if (!this.provider) {
+			throw new Error("Git provider not set. Call setProviderForRemote first.");
+		}
 		this.ui.space();
 
-		const commitMessages = await provider.fetchCommits(pr);
+		const commitMessages = await this.provider.fetchCommits(pr);
 
 		if (commitMessages.length > 0) {
 			const displayCount = Math.min(
@@ -290,9 +297,11 @@ export class PRWorkflowManager {
 
 	public async postCommentsToRemote(
 		pr: PullRequest,
-		provider: GitProvider,
 		comments: ReviewComment[],
 	): Promise<void> {
+		if (!this.provider) {
+			throw new Error("Git provider not set. Call setProviderForRemote first.");
+		}
 		if (comments.length === 0) {
 			this.ui.info(theme.muted("No comments to post to remote."));
 			return;
@@ -309,7 +318,7 @@ export class PRWorkflowManager {
 
 		for (const prComment of prComments) {
 			try {
-				await provider.createPullRequestComment(pr, prComment);
+				await this.provider.createPullRequestComment(pr, prComment);
 				this.ui.success(
 					theme.success(
 						`✓ Posted comment to ${prComment.path ? `${prComment.path}:${prComment.line}` : "PR discussion"}`,

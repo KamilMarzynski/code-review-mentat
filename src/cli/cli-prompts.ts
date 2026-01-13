@@ -123,7 +123,7 @@ export async function promptForCacheStrategy(
 export async function promptForPendingCommentsAction(
 	pendingCount: number,
 	hasNewCommits: boolean,
-): Promise<"handle_comments" | "re_review"> {
+): Promise<"handle_comments" | "review"> {
 	const action = await clack.select({
 		message: "What would you like to do?",
 		options: [
@@ -133,7 +133,7 @@ export async function promptForPendingCommentsAction(
 				hint: `Review and resolve ${pendingCount} pending comment(s)`,
 			},
 			{
-				value: "re_review",
+				value: "review",
 				label: "🔄 Run new review",
 				hint: hasNewCommits
 					? "Recommended: New commits detected"
@@ -147,7 +147,7 @@ export async function promptForPendingCommentsAction(
 		process.exit(0);
 	}
 
-	return action as "handle_comments" | "re_review";
+	return action as "handle_comments" | "review";
 }
 
 export async function promptToResolveComments(): Promise<boolean> {

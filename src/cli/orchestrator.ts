@@ -1,9 +1,5 @@
 import type LocalCache from "../cache/local-cache";
-import {
-	getPRKey,
-	type GitProvider,
-	type PullRequest,
-} from "../git-providers/types";
+import { getPRKey, type PullRequest } from "../git-providers/types";
 import { ui } from "../ui/logger";
 import { theme } from "../ui/theme";
 import {
@@ -42,8 +38,8 @@ export class CLIOrchestrator {
 		try {
 			// Step 1-2: Remote selection and PR fetching
 			const selectedRemote = await this.prWorkflow.selectRemote();
-			const { provider, prs } =
-				await this.prWorkflow.fetchPullRequests(selectedRemote);
+			await this.prWorkflow.setProviderForRemote(selectedRemote);
+			const { prs } = await this.prWorkflow.fetchPullRequests();
 
 			// Step 3: PR selection
 			const selectedPr = await this.prWorkflow.selectPullRequest(prs);
@@ -56,10 +52,8 @@ export class CLIOrchestrator {
 				await this.prWorkflow.analyzeChanges(selectedPr);
 
 			// Step 6: Commit history
-			const commitMessages = await this.prWorkflow.fetchCommitHistory(
-				provider,
-				selectedPr,
-			);
+			const commitMessages =
+				await this.prWorkflow.fetchCommitHistory(selectedPr);
 
 			// Step 7: Check for pending comments from previous review
 			const commentAction =
@@ -68,9 +62,9 @@ export class CLIOrchestrator {
 			if (commentAction === "handle_comments") {
 				await this.handleComments(getPRKey(selectedPr));
 				return;
-			} else if (!commentAction || commentAction === "none") {
+			} else if (commentAction === "none") {
 				// Step 8: Handle existing approved comments from previous reviews
-				await this.handleAcceptedCommentsIfExist(selectedPr, provider);
+				await this.handleAcceptedCommentsIfExist(selectedPr);
 				return;
 			}
 
@@ -136,7 +130,7 @@ export class CLIOrchestrator {
 				await this.handleComments(getPRKey(selectedPr));
 			}
 
-			await this.handleAcceptedCommentsIfExist(selectedPr, provider);
+			await this.handleAcceptedCommentsIfExist(selectedPr);
 			return;
 		} catch (error) {
 			ui.cancel(
@@ -154,10 +148,7 @@ export class CLIOrchestrator {
 		}
 	}
 
-	private async handleAcceptedCommentsIfExist(
-		pr: PullRequest,
-		provider: GitProvider,
-	): Promise<void> {
+	private async handleAcceptedCommentsIfExist(pr: PullRequest): Promise<void> {
 		const commentsAfter = await this.cache.getComments(getPRKey(pr));
 
 		const acceptedComments = commentsAfter.filter(
@@ -169,11 +160,7 @@ export class CLIOrchestrator {
 
 			if (shouldSend) {
 				try {
-					await this.prWorkflow.postCommentsToRemote(
-						pr,
-						provider,
-						acceptedComments,
-					);
+					await this.prWorkflow.postCommentsToRemote(pr, acceptedComments);
 					ui.success(
 						theme.success(
 							`✓ Posted ${acceptedComments.length} accepted comment(s) to the pull request`,
