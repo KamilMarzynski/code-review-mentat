@@ -1,12 +1,10 @@
-import type { LangGraphRunnableConfig } from "@langchain/langgraph";
-import { type ClaudeError, ClaudeQueryExecutor } from "./claude-query-executor";
-import type { ReviewComment, ReviewEvent, ReviewState } from "./types";
-
-type ToolUseBlock = {
-	type: "tool_use";
-	name: string;
-	input?: Record<string, any>;
-};
+import { ClaudeQueryExecutor } from "./claude-query-executor";
+import type {
+	ReviewComment,
+	ReviewEvent,
+	ReviewInput,
+	ReviewOutput,
+} from "./types";
 
 export class CodeReviewer {
 	private executor: ClaudeQueryExecutor;
@@ -16,54 +14,123 @@ export class CodeReviewer {
 	}
 
 	public async *review(
-		state: ReviewState,
-	): AsyncGenerator<ReviewEvent | ReviewState> {
-		const writer = this.createGeneratorWriter();
-		this.emitReviewStart(writer);
+		input: ReviewInput,
+	): AsyncGenerator<ReviewEvent | ReviewOutput> {
+		yield {
+			type: "review_start",
+			metadata: {
+				timestamp: Date.now(),
+			},
+		};
 
-		const prompt = this.buildPrompt(state);
+		const prompt = this.buildPrompt(input);
 
 		// Track tools used during review for verification validation
 		const toolsUsed: Array<{ tool: string; input: string }> = [];
 
-		const result = await this.executor.executeStructured<{
-			comments: ReviewComment[];
-		}>({
-			prompt,
-			schema: this.getReviewSchema(),
-			systemPromptAppend: [
-				"You are in READ-ONLY review mode.",
-				"Never use Edit or Write tools.",
-				"Prefer Grep/Glob/Read for codebase discovery.",
-				"IMPORTANT: For each comment, you MUST have used a tool to verify it.",
-				"Comments without tool verification will be flagged as low confidence.",
-			].join("\n"),
-			allowedTools: ["Read", "Grep", "Glob"],
-			disallowedTools: ["Edit", "Write"],
-			permissionMode: "default",
-			canUseTool: async (toolName, input) => {
-				if (toolName === "Edit" || toolName === "Write") {
-					return { behavior: "deny", message: "Review node is read-only." };
+		// Create an async queue for events
+		const eventQueue: ReviewEvent[] = [];
+		let pendingEvents = 0;
+		let executionComplete = false;
+		let resolveWaiting: (() => void) | null = null;
+
+		const pushEvent = (event: ReviewEvent) => {
+			eventQueue.push(event);
+			pendingEvents++;
+			if (resolveWaiting) {
+				resolveWaiting();
+				resolveWaiting = null;
+			}
+		};
+
+		const waitForEvent = () =>
+			new Promise<void>((resolve) => {
+				if (pendingEvents > 0 || executionComplete) {
+					resolve();
+				} else {
+					resolveWaiting = resolve;
 				}
-				// Track tool usage for verification
-				toolsUsed.push({
-					tool: toolName,
-					input:
-						input?.file_path ||
-						input?.path ||
-						input?.pattern ||
-						input?.query ||
-						"",
-				});
-				return { behavior: "allow", updatedInput: input };
-			},
-			onMessage: (msg) => this.handleMessage(msg, writer),
-		});
+			});
+
+		// Start execution in background
+		const executionPromise = this.executor
+			.executeStructured<{
+				comments: ReviewComment[];
+			}>({
+				prompt,
+				schema: this.getReviewSchema(),
+				systemPromptAppend: [
+					"You are in READ-ONLY review mode.",
+					"Never use Edit or Write tools.",
+					"Prefer Grep/Glob/Read for codebase discovery.",
+					"IMPORTANT: For each comment, you MUST have used a tool to verify it.",
+					"Comments without tool verification will be flagged as low confidence.",
+				].join("\n"),
+				allowedTools: ["Read", "Grep", "Glob"],
+				disallowedTools: ["Edit", "Write"],
+				permissionMode: "default",
+				canUseTool: async (toolName, input) => {
+					if (toolName === "Edit" || toolName === "Write") {
+						return { behavior: "deny", message: "Review node is read-only." };
+					}
+					// Track tool usage for verification
+					toolsUsed.push({
+						tool: toolName,
+						input:
+							input?.file_path ||
+							input?.path ||
+							input?.pattern ||
+							input?.query ||
+							"",
+					});
+					return { behavior: "allow", updatedInput: input };
+				},
+				onMessage: (msg) => {
+					for (const event of this.handleMessage(msg)) {
+						pushEvent(event);
+					}
+				},
+			})
+			.then((result) => {
+				executionComplete = true;
+				if (resolveWaiting) {
+					resolveWaiting();
+					resolveWaiting = null;
+				}
+				return result;
+			});
+
+		// Yield events as they arrive
+		while (!executionComplete || pendingEvents > 0) {
+			await waitForEvent();
+
+			while (eventQueue.length > 0) {
+				const event = eventQueue.shift();
+				if (event) {
+					pendingEvents--;
+					yield event;
+				}
+			}
+		}
+
+		// Wait for execution to complete and get result
+		const result = await executionPromise;
 
 		if (!result.success) {
-			this.emitClaudeError(writer, result.error);
 			yield {
-				...state,
+				type: "review_error",
+				message: `Review failed: ${result.error.message}`,
+				error: {
+					name: result.error.type,
+					message: result.error.message,
+					stack: result.error.originalError?.stack,
+				},
+				metadata: {
+					timestamp: Date.now(),
+				},
+			};
+			yield {
+				...input,
 				comments: [],
 				result: `Review failed: ${result.error.message}`,
 			};
@@ -78,11 +145,30 @@ export class CodeReviewer {
 			toolsUsed,
 		);
 
-		this.emitSuccess(writer, validatedComments);
-		this.emitReviewData(writer, state, validatedComments);
+		yield {
+			type: "review_success",
+			dataSource: "live",
+			commentCount: validatedComments.length,
+			metadata: {
+				timestamp: Date.now(),
+			},
+		};
 
 		yield {
-			...state,
+			type: "review_data",
+			data: {
+				sourceBranch: input.sourceBranch,
+				targetBranch: input.targetBranch,
+				currentCommit: input.sourceHash,
+				comments: validatedComments,
+			},
+			metadata: {
+				timestamp: Date.now(),
+			},
+		};
+
+		yield {
+			...input,
 			comments: validatedComments,
 			result: "Review completed successfully",
 		};
@@ -128,25 +214,8 @@ export class CodeReviewer {
 		});
 	}
 
-	private createWriter(
-		config: LangGraphRunnableConfig,
-	): (event: ReviewEvent) => void {
-		return (
-			config.writer ||
-			((_event: ReviewEvent) => {
-				// Silent no-op when streaming not configured
-			})
-		);
-	}
-
-	private createGeneratorWriter(): (event: ReviewEvent) => void {
-		return function* (event: ReviewEvent) {
-			yield event;
-		};
-	}
-
-	private buildPrompt(state: ReviewState): string {
-		const contextGuidance = this.buildContextGuidance(state.context);
+	private buildPrompt(input: ReviewInput): string {
+		const contextGuidance = this.buildContextGuidance(input.context);
 
 		return [
 			"You are performing a code review for a pull request.",
@@ -243,14 +312,14 @@ export class CodeReviewer {
 			contextGuidance,
 			"",
 			"## Inputs",
-			`Edited files (${state.editedFiles.length}):`,
-			...state.editedFiles.map((f) => `- ${f}`),
+			`Edited files (${input.editedFiles.length}):`,
+			...input.editedFiles.map((f) => `- ${f}`),
 			"",
 			"Commits:",
-			...state.commits.map((c) => `- ${c}`),
+			...input.commits.map((c) => `- ${c}`),
 			"",
 			"PR diff:",
-			state.diff,
+			input.diff,
 		].join("\n");
 	}
 
@@ -272,18 +341,28 @@ export class CodeReviewer {
 		].join("\n");
 	}
 
-	private handleMessage(msg: any, writer: (event: ReviewEvent) => void): void {
-		if (msg.type === "assistant") {
-			this.handleAssistantMessage(msg, writer);
-		} else if (msg.type === "user") {
-			this.handleUserMessage(msg, writer);
+	private *handleMessage(msg: unknown): Generator<ReviewEvent> {
+		if (
+			typeof msg === "object" &&
+			msg !== null &&
+			"type" in msg &&
+			"message" in msg
+		) {
+			const typedMsg = msg as {
+				type: string;
+				message: { content: unknown };
+			};
+			if (typedMsg.type === "assistant") {
+				yield* this.handleAssistantMessage(typedMsg);
+			} else if (typedMsg.type === "user") {
+				yield* this.handleUserMessage(typedMsg);
+			}
 		}
 	}
 
-	private handleAssistantMessage(
-		msg: any,
-		writer: (event: ReviewEvent) => void,
-	): void {
+	private *handleAssistantMessage(msg: {
+		message: { content: unknown };
+	}): Generator<ReviewEvent> {
 		const { content } = msg.message;
 		if (!Array.isArray(content)) return;
 
@@ -291,18 +370,47 @@ export class CodeReviewer {
 			if (typeof block !== "object" || block === null || !("type" in block))
 				continue;
 
-			if (block.type === "text" && "text" in block) {
-				this.emitThinking(writer, block.text);
+			if (
+				block.type === "text" &&
+				"text" in block &&
+				typeof block.text === "string"
+			) {
+				const trimmed = block.text.trim();
+				if (trimmed.length > 0) {
+					yield {
+						type: "review_thinking",
+						text: trimmed,
+						metadata: {
+							timestamp: Date.now(),
+						},
+					};
+				}
 			} else if (block.type === "tool_use" && "name" in block) {
-				this.emitToolCall(writer, block);
+				const blockWithName = block as {
+					name: string;
+					input?: Record<string, unknown>;
+				};
+				const input =
+					blockWithName.input?.file_path ||
+					blockWithName.input?.path ||
+					blockWithName.input?.pattern ||
+					blockWithName.input?.query ||
+					"";
+				yield {
+					type: "review_tool_call",
+					toolName: blockWithName.name,
+					input: String(input),
+					metadata: {
+						timestamp: Date.now(),
+					},
+				};
 			}
 		}
 	}
 
-	private handleUserMessage(
-		msg: any,
-		writer: (event: ReviewEvent) => void,
-	): void {
+	private *handleUserMessage(msg: {
+		message: { content: unknown };
+	}): Generator<ReviewEvent> {
 		const { content } = msg.message;
 		if (!Array.isArray(content)) return;
 
@@ -311,114 +419,14 @@ export class CodeReviewer {
 				continue;
 
 			if (block.type === "tool_result") {
-				this.emitToolResult(writer);
+				yield {
+					type: "review_tool_result",
+					metadata: {
+						timestamp: Date.now(),
+					},
+				};
 			}
 		}
-	}
-
-	private emitReviewStart(writer: (event: ReviewEvent) => void): void {
-		writer({
-			type: "review_start",
-			metadata: {
-				timestamp: Date.now(),
-			},
-		});
-	}
-
-	private emitThinking(
-		writer: (event: ReviewEvent) => void,
-		text: string,
-	): void {
-		const trimmed = text.trim();
-		if (trimmed.length > 0) {
-			writer({
-				type: "review_thinking",
-				text: trimmed,
-				metadata: {
-					timestamp: Date.now(),
-				},
-			});
-		}
-	}
-
-	private emitToolCall(
-		writer: (event: ReviewEvent) => void,
-		block: ToolUseBlock,
-	): void {
-		const input =
-			block.input?.file_path ||
-			block.input?.path ||
-			block.input?.pattern ||
-			block.input?.query ||
-			"";
-		writer({
-			type: "review_tool_call",
-			toolName: block.name,
-			input,
-			metadata: {
-				timestamp: Date.now(),
-			},
-		});
-	}
-
-	private emitToolResult(writer: (event: ReviewEvent) => void): void {
-		writer({
-			type: "review_tool_result",
-			metadata: {
-				timestamp: Date.now(),
-			},
-		});
-	}
-
-	private emitSuccess(
-		writer: (event: ReviewEvent) => void,
-		comments: ReviewComment[],
-	): void {
-		writer({
-			type: "review_success",
-			dataSource: "live",
-			commentCount: comments.length,
-			metadata: {
-				timestamp: Date.now(),
-			},
-		});
-	}
-
-	private emitReviewData(
-		writer: (event: ReviewEvent) => void,
-		state: ReviewState,
-		comments: ReviewComment[],
-	): void {
-		writer({
-			type: "review_data",
-			data: {
-				sourceBranch: state.sourceBranch,
-				targetBranch: state.targetBranch,
-				currentCommit: state.sourceHash,
-				comments,
-			},
-			metadata: {
-				timestamp: Date.now(),
-			},
-		});
-	}
-
-	private emitClaudeError(
-		writer: (event: ReviewEvent) => void,
-		error: ClaudeError,
-	): void {
-		writer({
-			type: "review_error",
-			message: `Review failed: ${error.message}`,
-			error: {
-				name: error.type,
-				message: error.message,
-				stack: error.originalError?.stack,
-			},
-			metadata: {
-				timestamp: Date.now(),
-			},
-		});
 	}
 
 	private getReviewSchema(): Record<string, unknown> {

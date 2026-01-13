@@ -1,7 +1,4 @@
 import type { BaseMessage } from "@langchain/core/messages";
-import { MessagesZodMeta } from "@langchain/langgraph";
-import { registry } from "@langchain/langgraph/zod";
-import * as z from "zod";
 
 export type ReviewCommentStatus =
 	| "pending" // Not yet addressed
@@ -36,49 +33,11 @@ export type FixIteration = {
 	timestamp: number;
 };
 
-export const reviewState = z.object({
-	commits: z.array(z.string()),
-	diff: z.string(),
-	description: z.string().optional(),
-	title: z.string(),
-	editedFiles: z.array(z.string()),
-	sourceBranch: z.string(),
-	sourceHash: z.string(),
-	targetBranch: z.string(),
-	targetHash: z.string(),
-	gatherContext: z.boolean().default(true),
-	refreshCache: z.boolean().default(false),
-	messages: z
-		.array(z.custom<BaseMessage>())
-		.register(registry, MessagesZodMeta),
-	context: z.string().optional(),
-	result: z.string().optional(),
-	comments: z.array(z.custom<ReviewComment>()),
-});
-
-export type ReviewState = z.infer<typeof reviewState>;
-
-export type ReviewInput = {
-	title: string;
-	diff: string;
-	commits: string[];
-	editedFiles: string[];
-	sourceHash: string;
-	sourceName: string;
-	targetHash: string;
-	targetName: string;
-	gatherContext?: boolean;
-	refreshCache?: boolean;
-	description: string;
-	context?: string;
-};
-
 export type ContextGatherInput = {
 	title: string;
 	description?: string;
 	commits: string[];
 	editedFiles: string[];
-	messages: BaseMessage[];
 	sourceBranch: string;
 	targetBranch: string;
 	sourceHash: string;
@@ -87,6 +46,21 @@ export type ContextGatherInput = {
 export type ContextGatherOutput = ContextGatherInput & {
 	context: string;
 	messages: BaseMessage[];
+};
+
+export type ReviewInput = {
+	context?: string;
+	editedFiles: string[];
+	commits: string[];
+	diff: string;
+	sourceBranch: string;
+	targetBranch: string;
+	sourceHash: string;
+};
+
+export type ReviewOutput = {
+	comments: ReviewComment[];
+	result: string;
 };
 
 export type StreamEventMetadata = {
@@ -193,21 +167,3 @@ export type EventOfType<T extends NodeEvent, Type extends T["type"]> = Extract<
 // Usage examples:
 // type ToolCallEvent = EventOfType<ContextEvent, 'context_tool_call'>;
 // type ThinkingEvent = EventOfType<ReviewEvent, 'review_thinking'>;
-
-export type ReviewOutput = Required<
-	Omit<
-		ReviewState,
-		| "sourceHash"
-		| "targetHash"
-		| "gatherContext"
-		| "refreshCache"
-		| "commits"
-		| "diff"
-		| "editedFiles"
-		| "title"
-		| "description"
-		| "messages"
-		| "sourceBranch"
-		| "targetBranch"
-	>
->;

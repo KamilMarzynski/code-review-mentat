@@ -31,7 +31,7 @@ export class ContextGatherer {
 			let context = "";
 			let allMessages: BaseMessage[] = [];
 
-			for await (const item of this.processAgentStream(input, message)) {
+			for await (const item of this.processAgentStream(message)) {
 				if ("context" in item) {
 					context = item.context;
 					allMessages = item.allMessages;
@@ -91,12 +91,11 @@ Edited Files: ${input.editedFiles.join(", ")}`);
 	}
 
 	private async *processAgentStream(
-		input: ContextGatherInput,
 		message: HumanMessage,
 	): AsyncGenerator<
 		ContextEvent | { context: string; allMessages: BaseMessage[] }
 	> {
-		const allMessages: BaseMessage[] = [...input.messages, message];
+		const allMessages: BaseMessage[] = [message];
 
 		const stream = await this.agent.stream({
 			messages: allMessages,

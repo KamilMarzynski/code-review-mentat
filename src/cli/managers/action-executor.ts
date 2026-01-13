@@ -2,22 +2,14 @@ import type LocalCache from "../../cache/local-cache";
 import { getPRKey, type PullRequest } from "../../git-providers/types";
 import type { CodeReviewer } from "../../review/code-reviewer";
 import type { ContextGatherer } from "../../review/context-gatherer";
-import type {
-	ContextEvent,
-	ReviewEvent,
-	ReviewState,
-} from "../../review/types";
+import type { ContextEvent, ReviewEvent } from "../../review/types";
 import { ui } from "../../ui/logger";
 import { theme } from "../../ui/theme";
 import {
 	promptToResolveComments,
 	promptToSendCommentsToRemote,
 } from "../cli-prompts";
-import type {
-	HandleCommentsResult,
-	ReviewResult,
-	WorkflowState,
-} from "../types";
+import type { HandleCommentsResult, ReviewResult } from "../types";
 import type { CommentDisplayService } from "./comment-display-service";
 import type { CommentResolutionManager } from "./comment-resolution-manager";
 import type { FixSessionOrchestrator } from "./fix-session-orchestrator";
@@ -71,7 +63,6 @@ export class ActionExecutor {
 				sourceBranch: pr.source.name,
 				targetBranch: pr.target.name,
 				sourceHash: pr.source.commitHash,
-				messages: [],
 			};
 
 			ui.section("Deep Context Gathering");
@@ -218,22 +209,15 @@ export class ActionExecutor {
 			};
 			const cachedContext = this.cache.get(cacheInput);
 
-			// Build review state
-			const reviewState: ReviewState = {
-				commits: commitMessages,
-				title: pr.title,
-				description: pr.description || "",
+			// Build review input
+			const reviewInput = {
+				context: cachedContext || undefined,
 				editedFiles,
+				commits: commitMessages,
+				diff: fullDiff,
 				sourceBranch: pr.source.name,
 				targetBranch: pr.target.name,
 				sourceHash: pr.source.commitHash,
-				targetHash: pr.target.commitHash,
-				diff: fullDiff,
-				messages: [],
-				gatherContext: false,
-				refreshCache: false,
-				context: cachedContext || undefined,
-				comments: [],
 			};
 
 			ui.section("Code Review Analysis");
@@ -241,7 +225,7 @@ export class ActionExecutor {
 			spinnerStarted = true;
 
 			// Stream review events
-			for await (const event of this.codeReviewer.review(reviewState)) {
+			for await (const event of this.codeReviewer.review(reviewInput)) {
 				// Check if this is a review event
 				if ("type" in event) {
 					const reviewEvent = event as ReviewEvent;
