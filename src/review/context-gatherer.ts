@@ -5,108 +5,98 @@ import {
 	type ToolCall,
 	ToolMessage,
 } from "@langchain/core/messages";
-import type { LangGraphRunnableConfig } from "@langchain/langgraph";
+
 import type { ReactAgent } from "langchain";
-import type { ContextEvent, ReviewState } from "./types";
+import type {
+	ContextEvent,
+	ContextGatherInput,
+	ContextGatherOutput,
+} from "./types";
 
 export class ContextGatherer {
 	constructor(private agent: ReactAgent) {}
 
-	public async gatherNode(
-		state: ReviewState,
-		config: LangGraphRunnableConfig,
-	): Promise<Partial<ReviewState>> {
-		const writer = this.createWriter(config);
-
-		this.emitContextStart(writer);
-
-		try {
-			const message = this.buildContextMessage(state);
-			const { context, allMessages } = await this.processAgentStream(
-				state,
-				message,
-				writer,
-			);
-
-			this.emitSuccess(writer);
-			this.emitContextData(writer, state, context);
-
-			return {
-				...state,
-				context,
-				messages: allMessages,
-			};
-		} catch (error) {
-			this.emitError(writer, error as Error);
-			return {
-				...state,
-				context: "Context gathering failed.",
-			};
-		}
-	}
-
 	public async *gather(
-		state: ReviewState,
-	): AsyncGenerator<Partial<ContextEvent | ReviewState>> {
-		const writer = this.createGeneratorWriter();
+		input: ContextGatherInput,
+	): AsyncGenerator<Partial<ContextEvent | ContextGatherOutput>> {
+		yield {
+			type: "context_start",
+			metadata: {
+				timestamp: Date.now(),
+			},
+		};
 
-		this.emitContextStart(writer);
 		try {
-			const message = this.buildContextMessage(state);
-			const { context, allMessages } = await this.processAgentStream(
-				state,
-				message,
-				writer,
-			);
+			const message = this.buildContextMessage(input);
+			let context = "";
+			let allMessages: BaseMessage[] = [];
 
-			this.emitSuccess(writer);
-			this.emitContextData(writer, state, context);
+			for await (const item of this.processAgentStream(input, message)) {
+				if ("context" in item) {
+					context = item.context;
+					allMessages = item.allMessages;
+				} else {
+					yield item;
+				}
+			}
 
 			yield {
-				...state,
+				type: "context_success",
+				dataSource: "live",
+				metadata: {
+					timestamp: Date.now(),
+				},
+			};
+
+			yield {
+				type: "context_data",
+				data: {
+					sourceBranch: input.sourceBranch,
+					targetBranch: input.targetBranch,
+					currentCommit: input.sourceHash,
+					context,
+				},
+				metadata: {
+					timestamp: Date.now(),
+				},
+			};
+
+			yield {
+				...input,
 				context,
 				messages: allMessages,
 			};
 		} catch (error) {
-			this.emitError(writer, error as Error);
 			yield {
-				...state,
+				type: "context_error",
+				message: `Context gathering failed: ${(error as Error).message}`,
+				metadata: {
+					timestamp: Date.now(),
+				},
+			};
+
+			yield {
+				...input,
 				context: "Context gathering failed.",
 			};
 		}
 	}
 
-	private createWriter(
-		config: LangGraphRunnableConfig,
-	): (event: ContextEvent) => void {
-		return (
-			config.writer ||
-			((_event: ContextEvent) => {
-				// Silent no-op when streaming not configured
-			})
-		);
-	}
-
-	private createGeneratorWriter(): (event: ContextEvent) => void {
-		return function* (event: ContextEvent) {
-			yield event;
-		};
-	}
-
-	private buildContextMessage(state: ReviewState): HumanMessage {
+	private buildContextMessage(input: ContextGatherInput): HumanMessage {
 		return new HumanMessage(`Please analyze the following pull request details to gather relevant context for a code review.
-Pull Request Title: ${state.title}
-Description: ${state.description ?? "No description provided."}
-Commits: ${state.commits.join("\n")}
-Edited Files: ${state.editedFiles.join(", ")}`);
+Pull Request Title: ${input.title}
+Description: ${input.description ?? "No description provided."}
+Commits: ${input.commits.join("\n")}
+Edited Files: ${input.editedFiles.join(", ")}`);
 	}
 
-	private async processAgentStream(
-		state: ReviewState,
+	private async *processAgentStream(
+		input: ContextGatherInput,
 		message: HumanMessage,
-		writer: (event: ContextEvent) => void,
-	): Promise<{ context: string; allMessages: BaseMessage[] }> {
-		const allMessages: BaseMessage[] = [...state.messages, message];
+	): AsyncGenerator<
+		ContextEvent | { context: string; allMessages: BaseMessage[] }
+	> {
+		const allMessages: BaseMessage[] = [...input.messages, message];
 
 		const stream = await this.agent.stream({
 			messages: allMessages,
@@ -117,11 +107,16 @@ Edited Files: ${state.editedFiles.join(", ")}`);
 				const message = chunk.messages[chunk.messages.length - 1];
 				// console.debug("Received message from agent stream:", message);
 				if (this.isAIMessageType(message)) {
-					this.handleAIMessage(message, writer);
+					yield* this.handleAIMessage(message);
 				}
 
 				if (this.isToolMessageType(message)) {
-					this.handleToolMessage(writer);
+					yield {
+						type: "context_tool_result",
+						metadata: {
+							timestamp: Date.now(),
+						},
+					};
 				}
 
 				allMessages.push(message);
@@ -129,7 +124,7 @@ Edited Files: ${state.editedFiles.join(", ")}`);
 		}
 
 		const context = this.extractContext(allMessages);
-		return { context, allMessages };
+		yield { context, allMessages };
 	}
 
 	private isAIMessageType(message: BaseMessage): message is AIMessage {
@@ -140,16 +135,13 @@ Edited Files: ${state.editedFiles.join(", ")}`);
 		return ToolMessage.isInstance(message);
 	}
 
-	private handleAIMessage(
-		msg: AIMessage,
-		writer: (event: ContextEvent) => void,
-	): void {
+	private *handleAIMessage(msg: AIMessage): Generator<ContextEvent> {
 		if (this.hasToolCallReasoning(msg)) {
-			this.emitToolCallReasoning(msg, writer);
+			yield* this.getToolCallReasoningEvents(msg);
 		}
 
 		if (msg.tool_calls && Array.isArray(msg.tool_calls)) {
-			this.emitToolCalls(msg.tool_calls, writer);
+			yield* this.getToolCallEvents(msg.tool_calls);
 		}
 	}
 
@@ -161,10 +153,7 @@ Edited Files: ${state.editedFiles.join(", ")}`);
 		);
 	}
 
-	private emitToolCallReasoning(
-		msg: AIMessage,
-		writer: (event: ContextEvent) => void,
-	): void {
+	private *getToolCallReasoningEvents(msg: AIMessage): Generator<ContextEvent> {
 		if (!Array.isArray(msg.content)) {
 			return;
 		}
@@ -177,22 +166,19 @@ Edited Files: ${state.editedFiles.join(", ")}`);
 			) {
 				const text = (contentBlock.text as string).trim();
 				if (text.length > 0) {
-					writer({
+					yield {
 						type: "context_tool_call_reasoning",
 						message: text,
 						metadata: {
 							timestamp: Date.now(),
 						},
-					});
+					};
 				}
 			}
 		}
 	}
 
-	private emitToolCalls(
-		toolCalls: ToolCall[],
-		writer: (event: ContextEvent) => void,
-	): void {
+	private *getToolCallEvents(toolCalls: ToolCall[]): Generator<ContextEvent> {
 		for (const toolCall of toolCalls) {
 			const toolName = toolCall.name || "unknown";
 			const args = toolCall.args || {};
@@ -210,24 +196,15 @@ Edited Files: ${state.editedFiles.join(", ")}`);
 				args.cloudId ||
 				"";
 
-			writer({
+			yield {
 				type: "context_tool_call",
 				toolName,
 				input: argSummary,
 				metadata: {
 					timestamp: Date.now(),
 				},
-			});
+			};
 		}
-	}
-
-	private handleToolMessage(writer: (event: ContextEvent) => void): void {
-		writer({
-			type: "context_tool_result",
-			metadata: {
-				timestamp: Date.now(),
-			},
-		});
 	}
 
 	private extractContext(messages: BaseMessage[]): string {
@@ -246,53 +223,5 @@ Edited Files: ${state.editedFiles.join(", ")}`);
 		}
 
 		return context;
-	}
-
-	private emitContextStart(writer: (event: ContextEvent) => void): void {
-		writer({
-			type: "context_start",
-			metadata: {
-				timestamp: Date.now(),
-			},
-		});
-	}
-
-	private emitSuccess(writer: (event: ContextEvent) => void): void {
-		writer({
-			type: "context_success",
-			dataSource: "live",
-			metadata: {
-				timestamp: Date.now(),
-			},
-		});
-	}
-
-	private emitContextData(
-		writer: (event: ContextEvent) => void,
-		state: ReviewState,
-		context: string,
-	): void {
-		writer({
-			type: "context_data",
-			data: {
-				sourceBranch: state.sourceBranch,
-				targetBranch: state.targetBranch,
-				currentCommit: state.sourceHash,
-				context,
-			},
-			metadata: {
-				timestamp: Date.now(),
-			},
-		});
-	}
-
-	private emitError(writer: (event: ContextEvent) => void, error: Error): void {
-		writer({
-			type: "context_error",
-			message: `Context gathering failed: ${error.message}`,
-			metadata: {
-				timestamp: Date.now(),
-			},
-		});
 	}
 }

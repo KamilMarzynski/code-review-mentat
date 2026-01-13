@@ -13,7 +13,7 @@ export class CommentDisplayService {
 
 	constructor(private ui: UILogger) {
 		this.codeReader = new CodeContextReader();
-		this.formatter = new CommentFormatter(ui, this.codeReader);
+		this.formatter = new CommentFormatter(this.ui, this.codeReader);
 	}
 
 	/**

@@ -1,13 +1,7 @@
 import { beforeEach, describe, expect, it, mock } from "bun:test";
-import type LocalCache from "../../cache/local-cache";
 import type { PullRequest } from "../../git-providers/types";
 import type { ActionExecutor } from "../managers/action-executor";
-import type { CommentDisplayService } from "../managers/comment-display-service";
-import type { CommentResolutionManager } from "../managers/comment-resolution-manager";
-import type { FixSessionOrchestrator } from "../managers/fix-session-orchestrator";
 import type { PostActionHandler } from "../managers/post-action-handler";
-import type { PRWorkflowManager } from "../managers/pr-workflow-manager";
-import type { ReviewStreamHandler } from "../managers/review-stream-handler";
 import type { WorkflowStateManager } from "../managers/workflow-state-manager";
 import type { WorkflowAction } from "../types";
 
@@ -88,15 +82,9 @@ mock.module("../../ui/logger", () => ({
  * - Error handling
  */
 describe("CLIOrchestrator Integration", () => {
-	let mockPRWorkflow: PRWorkflowManager;
 	let mockStateManager: WorkflowStateManager;
 	let mockActionExecutor: ActionExecutor;
 	let mockPostActionHandler: PostActionHandler;
-	let mockCommentResolution: CommentResolutionManager;
-	let mockReviewHandler: ReviewStreamHandler;
-	let mockFixSession: FixSessionOrchestrator;
-	let mockCommentDisplay: CommentDisplayService;
-	let mockCache: LocalCache;
 
 	const samplePR: PullRequest = {
 		id: 123,
@@ -113,23 +101,6 @@ describe("CLIOrchestrator Integration", () => {
 	};
 
 	beforeEach(() => {
-		// Create comprehensive mocks
-		mockPRWorkflow = {
-			selectRemote: mock(async () => ({
-				name: "origin",
-				url: "https://github.com/user/repo.git",
-			})),
-			fetchPullRequests: mock(async () => [samplePR]),
-			selectPR: mock(async () => samplePR),
-			prepareRepository: mock(async () => {}),
-			fetchCommitHistory: mock(async () => ["commit1", "commit2"]),
-			analyzeChanges: mock(async () => ({
-				fullDiff: "diff",
-				editedFiles: ["file.ts"],
-			})),
-			postCommentsToRemote: mock(async () => {}),
-		} as unknown as PRWorkflowManager;
-
 		mockStateManager = {
 			detectState: mock(async () => ({
 				hasContext: false,
@@ -175,38 +146,6 @@ describe("CLIOrchestrator Integration", () => {
 			afterPendingHandled: mock(async () => "show_menu"),
 			afterAcceptedSent: mock(async () => "show_menu"),
 		} as unknown as PostActionHandler;
-
-		mockCommentResolution = {
-			handleComments: mock(async () => ({
-				processed: 0,
-				fixed: 0,
-				accepted: 0,
-				rejected: 0,
-				skipped: 0,
-			})),
-		} as unknown as CommentResolutionManager;
-
-		mockReviewHandler = {
-			processReviewStream: mock(async () => ({
-				contextHasError: false,
-				reviewHasError: false,
-			})),
-		} as unknown as ReviewStreamHandler;
-
-		mockFixSession = {
-			runFixSession: mock(async () => {}),
-		} as unknown as FixSessionOrchestrator;
-
-		mockCommentDisplay = {
-			displayCommentWithContext: mock(async () => {}),
-			promptOptionalNotes: mock(async () => undefined),
-		} as unknown as CommentDisplayService;
-
-		mockCache = {
-			has: mock(() => false),
-			getMetadata: mock(() => undefined),
-			getComments: mock(async () => []),
-		} as unknown as LocalCache;
 	});
 
 	it("should handle immediate exit from menu", async () => {

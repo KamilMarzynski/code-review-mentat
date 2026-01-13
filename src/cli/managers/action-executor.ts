@@ -63,22 +63,15 @@ export class ActionExecutor {
 			const commitMessages = await this.prWorkflow.fetchCommitHistory(pr);
 			const { editedFiles } = await this.prWorkflow.analyzeChanges(pr);
 
-			// TODO: There will be no state, there will be just input, but for now this is debt
-			const state: ReviewState = {
+			const contextInput = {
 				commits: commitMessages,
 				title: pr.title,
-				description: pr.description || "",
+				description: pr.description,
 				editedFiles,
 				sourceBranch: pr.source.name,
 				targetBranch: pr.target.name,
 				sourceHash: pr.source.commitHash,
-				targetHash: pr.target.commitHash,
-				diff: "", // Not needed for context gathering
 				messages: [],
-				gatherContext: true,
-				refreshCache: refresh,
-				context: undefined,
-				comments: [],
 			};
 
 			ui.section("Deep Context Gathering");
@@ -88,7 +81,7 @@ export class ActionExecutor {
 			spinnerStarted = true;
 
 			// Stream context gathering events
-			for await (const event of this.contextGatherer.gather(state)) {
+			for await (const event of this.contextGatherer.gather(contextInput)) {
 				// Check if this is a context event
 				if ("type" in event) {
 					const contextEvent = event as ContextEvent;

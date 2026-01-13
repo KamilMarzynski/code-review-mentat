@@ -73,6 +73,22 @@ export type ReviewInput = {
 	context?: string;
 };
 
+export type ContextGatherInput = {
+	title: string;
+	description?: string;
+	commits: string[];
+	editedFiles: string[];
+	messages: BaseMessage[];
+	sourceBranch: string;
+	targetBranch: string;
+	sourceHash: string;
+};
+
+export type ContextGatherOutput = ContextGatherInput & {
+	context: string;
+	messages: BaseMessage[];
+};
+
 export type StreamEventMetadata = {
 	timestamp: number;
 };
