@@ -1,11 +1,12 @@
 import type LocalCache from "../../cache/local-cache";
-import {
-	type GitProvider,
-	getPRKey,
-	type PullRequest,
-} from "../../git-providers/types";
+import { getPRKey, type PullRequest } from "../../git-providers/types";
+import type { CodeReviewer } from "../../review/code-reviewer";
 import type { ContextGatherer } from "../../review/context-gatherer";
-import type { ContextEvent, ReviewState } from "../../review/types";
+import type {
+	ContextEvent,
+	ReviewEvent,
+	ReviewState,
+} from "../../review/types";
 import { ui } from "../../ui/logger";
 import { theme } from "../../ui/theme";
 import {
@@ -21,7 +22,6 @@ import type { CommentDisplayService } from "./comment-display-service";
 import type { CommentResolutionManager } from "./comment-resolution-manager";
 import type { FixSessionOrchestrator } from "./fix-session-orchestrator";
 import type { PRWorkflowManager } from "./pr-workflow-manager";
-import type { ReviewStreamHandler } from "./review-stream-handler";
 
 /**
  * Centralized execution of workflow actions
@@ -38,11 +38,11 @@ import type { ReviewStreamHandler } from "./review-stream-handler";
 export class ActionExecutor {
 	constructor(
 		private prWorkflow: PRWorkflowManager,
-		private reviewHandler: ReviewStreamHandler,
 		private commentResolution: CommentResolutionManager,
 		private fixSession: FixSessionOrchestrator,
 		private commentDisplay: CommentDisplayService,
 		private contextGatherer: ContextGatherer,
+		private codeReviewer: CodeReviewer,
 		private cache: LocalCache,
 	) {}
 
@@ -201,15 +201,14 @@ export class ActionExecutor {
 	 * Execute review process for a pull request
 	 *
 	 * @param pr - Pull request to review
-	 * @param provider - Git provider for the PR
 	 * @param state - Current workflow state
 	 * @returns Review result with comment count and error status
 	 */
-	async executeReview(
-		pr: PullRequest,
-		_state: WorkflowState,
-	): Promise<ReviewResult> {
+	async executeReview(pr: PullRequest): Promise<ReviewResult> {
 		const prKey = getPRKey(pr);
+		const spinner = ui.spinner();
+		let hasError = false;
+		let spinnerStarted = false;
 
 		try {
 			// Fetch commit history
@@ -219,23 +218,101 @@ export class ActionExecutor {
 			const { fullDiff, editedFiles } =
 				await this.prWorkflow.analyzeChanges(pr);
 
-			// // Determine context strategy
-			// const contextConfig =
-			// 	await this.reviewHandler.determineContextStrategy(pr);
+			// Load context from cache if available
+			const cacheInput = {
+				sourceBranch: pr.source.name,
+				targetBranch: pr.target.name,
+			};
+			const cachedContext = this.cache.get(cacheInput);
 
-			// Process review stream
-			const { contextHasError, reviewHasError } =
-				await this.reviewHandler.processReviewStream(
-					pr,
-					commitMessages,
-					fullDiff,
-					editedFiles,
-					{
-						//TODO: refactor this
-						gatherContext: false,
-						refreshCache: false,
-					},
-				);
+			// Build review state
+			const reviewState: ReviewState = {
+				commits: commitMessages,
+				title: pr.title,
+				description: pr.description || "",
+				editedFiles,
+				sourceBranch: pr.source.name,
+				targetBranch: pr.target.name,
+				sourceHash: pr.source.commitHash,
+				targetHash: pr.target.commitHash,
+				diff: fullDiff,
+				messages: [],
+				gatherContext: false,
+				refreshCache: false,
+				context: cachedContext || undefined,
+				comments: [],
+			};
+
+			ui.section("Code Review Analysis");
+			spinner.start(theme.accent("Analyzing pull request changes"));
+			spinnerStarted = true;
+
+			// Stream review events
+			for await (const event of this.codeReviewer.review(reviewState)) {
+				// Check if this is a review event
+				if ("type" in event) {
+					const reviewEvent = event as ReviewEvent;
+
+					switch (reviewEvent.type) {
+						case "review_start":
+							// Already started spinner
+							break;
+
+						case "review_thinking":
+							if (!hasError) {
+								ui.step(reviewEvent.text);
+							}
+							break;
+
+						case "review_tool_call": {
+							if (hasError) break;
+
+							const displayMessage = this.getReviewToolMessage(
+								reviewEvent.toolName,
+								reviewEvent.input,
+							);
+							const spinnerMessage = this.extractSpinnerMessage(displayMessage);
+							ui.info(displayMessage);
+							spinner.message(theme.secondary(spinnerMessage));
+							break;
+						}
+
+						case "review_tool_result":
+							if (!hasError) {
+								spinner.message(theme.secondary("Analyzing results"));
+							}
+							break;
+
+						case "review_success":
+							if (!hasError) {
+								ui.sectionComplete(
+									`Code review complete: ${reviewEvent.commentCount} comment(s) found`,
+								);
+							}
+							break;
+
+						case "review_error":
+							hasError = true;
+							spinner.stop(theme.error("✗ Review failed"));
+							spinnerStarted = false;
+							ui.error(reviewEvent.message);
+							break;
+
+						case "review_data":
+							// Save comments to cache
+							await this.commentResolution.saveCommentsToCache(
+								reviewEvent.data.comments,
+								prKey,
+							);
+							break;
+					}
+				}
+			}
+
+			if (!hasError && spinnerStarted) {
+				spinner.stop(theme.success("✓ Review completed successfully"));
+				spinnerStarted = false;
+			}
 
 			console.log(""); // Spacing
 
@@ -246,15 +323,13 @@ export class ActionExecutor {
 			);
 
 			// Display review summary if comments exist
-			if (comments.length > 0 && !reviewHasError) {
+			if (comments.length > 0 && !hasError) {
 				console.log("");
 				console.log(theme.muted("─".repeat(60)));
 				this.commentDisplay.displayReviewSummary(comments);
 			}
 
-			const hasErrors = contextHasError || reviewHasError;
-
-			if (hasErrors) {
+			if (hasError) {
 				ui.outro(
 					theme.warning("⚠ Computation completed with errors. ") +
 						theme.muted("Review the output above for details."),
@@ -268,9 +343,12 @@ export class ActionExecutor {
 
 			return {
 				commentsCreated: pendingComments.length,
-				hasErrors,
+				hasErrors: hasError,
 			};
 		} catch (error) {
+			if (spinnerStarted) {
+				spinner.stop(theme.error("✗ Review failed"));
+			}
 			ui.error(
 				theme.error("✗ Review execution failed:\n") +
 					theme.muted(`   ${(error as Error).message}`),
@@ -280,6 +358,18 @@ export class ActionExecutor {
 				hasErrors: true,
 			};
 		}
+	}
+
+	/**
+	 * Get display message for review tool calls
+	 */
+	private getReviewToolMessage(toolName: string, arg?: string): string {
+		const messages: Record<string, string> = {
+			Read: `📖 Reading${arg ? `: ${arg}` : " file"}`,
+			Grep: `🔍 Searching${arg ? `: "${arg}"` : " codebase"}`,
+			Glob: `📁 Finding files${arg ? `: ${arg}` : ""}`,
+		};
+		return messages[toolName] || `⚡ ${toolName}${arg ? `: ${arg}` : ""}`;
 	}
 
 	/**

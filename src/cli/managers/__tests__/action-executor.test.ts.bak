@@ -1,19 +1,16 @@
 import { beforeEach, describe, expect, it, mock } from "bun:test";
 import type LocalCache from "../../../cache/local-cache";
-import type { PullRequest } from "../../../git-providers/types";
+import type { GitProvider, PullRequest } from "../../../git-providers/types";
 import type { CodeReviewer } from "../../../review/code-reviewer";
 import type { ContextGatherer } from "../../../review/context-gatherer";
-import type {
-	ContextEvent,
-	ReviewCommentWithId,
-	ReviewEvent,
-} from "../../../review/types";
+import type { ContextEvent, ReviewCommentWithId } from "../../../review/types";
 import type { WorkflowState } from "../../types";
 import { ActionExecutor } from "../action-executor";
 import type { CommentDisplayService } from "../comment-display-service";
 import type { CommentResolutionManager } from "../comment-resolution-manager";
 import type { FixSessionOrchestrator } from "../fix-session-orchestrator";
 import type { PRWorkflowManager } from "../pr-workflow-manager";
+import type { ReviewStreamHandler } from "../review-stream-handler";
 
 // Mock UI logger
 const mockSpinner = {
@@ -43,6 +40,7 @@ mock.module("../../../ui/logger", () => ({
 describe("ActionExecutor", () => {
 	let actionExecutor: ActionExecutor;
 	let mockPRWorkflow: PRWorkflowManager;
+	let mockReviewHandler: ReviewStreamHandler;
 	let mockCommentResolution: CommentResolutionManager;
 	let mockFixSession: FixSessionOrchestrator;
 	let mockCommentDisplay: CommentDisplayService;
@@ -90,6 +88,17 @@ describe("ActionExecutor", () => {
 			postCommentsToRemote: mock(async () => {}),
 		} as unknown as PRWorkflowManager;
 
+		mockReviewHandler = {
+			determineContextStrategy: mock(async () => ({
+				gatherContext: true,
+				refreshCache: false,
+			})),
+			processReviewStream: mock(async () => ({
+				contextHasError: false,
+				reviewHasError: false,
+			})),
+		} as unknown as ReviewStreamHandler;
+
 		mockCommentResolution = {
 			handleComments: mock(async () => ({
 				processed: 0,
@@ -98,87 +107,88 @@ describe("ActionExecutor", () => {
 				rejected: 0,
 				skipped: 0,
 			})),
-			saveCommentsToCache: mock(async () => {}),
-			getPendingComments: mock(() => []),
-			getAcceptedComments: mock(() => []),
-			getRejectedComments: mock(() => []),
-		} as unknown as CommentResolutionManager;
+		saveCommentsToCache: mock(async () => {}),
+		getPendingComments: mock(() => []),
+		getAcceptedComments: mock(() => []),
+		getRejectedComments: mock(() => []),
+	} as unknown as CommentResolutionManager;
 
-		mockFixSession = {
-			runFixSession: mock(async () => {}),
-		} as unknown as FixSessionOrchestrator;
+	mockFixSession = {
+		runFixSession: mock(async () => {}),
+	} as unknown as FixSessionOrchestrator;
 
-		mockCommentDisplay = {
-			displayReviewSummary: mock(() => {}),
-			promptOptionalNotes: mock(async () => undefined),
-			displayCommentWithContext: mock(async () => {}),
-		} as unknown as CommentDisplayService;
+	mockCommentDisplay = {
+		displayReviewSummary: mock(() => {}),
+		promptOptionalNotes: mock(async () => undefined),
+		displayCommentWithContext: mock(async () => {}),
+	} as unknown as CommentDisplayService;
 
-		mockContextGatherer = {
-			gather: mock(async function* () {
-				yield {
-					type: "context_start",
-					metadata: { timestamp: Date.now() },
-				};
-				yield {
-					type: "context_success",
-					dataSource: "live",
-					metadata: { timestamp: Date.now() },
-				};
-				yield {
-					type: "context_data",
-					data: {
-						sourceBranch: "feature",
-						targetBranch: "main",
-						currentCommit: "abc123",
-						context: "Test context",
-					},
-					metadata: { timestamp: Date.now() },
-				};
-			}),
-		} as unknown as ContextGatherer;
+	mockContextGatherer = {
+		gather: mock(async function* () {
+			yield {
+				type: "context_start",
+				metadata: { timestamp: Date.now() },
+			};
+			yield {
+				type: "context_success",
+				dataSource: "live",
+				metadata: { timestamp: Date.now() },
+			};
+			yield {
+				type: "context_data",
+				data: {
+					sourceBranch: "feature",
+					targetBranch: "main",
+					currentCommit: "abc123",
+					context: "Test context",
+				},
+				metadata: { timestamp: Date.now() },
+			};
+		}),
+	} as unknown as ContextGatherer;
 
-		mockCodeReviewer = {
-			review: mock(async function* () {
-				yield {
-					type: "review_start",
-					metadata: { timestamp: Date.now() },
-				};
-				yield {
-					type: "review_data",
-					data: {
-						sourceBranch: "feature",
-						targetBranch: "main",
-						currentCommit: "abc123",
-						comments: [],
-					},
-					metadata: { timestamp: Date.now() },
-				};
-				yield {
-					type: "review_success",
-					dataSource: "live",
-					commentCount: 0,
-					metadata: { timestamp: Date.now() },
-				};
-			}),
-			reviewNode: mock(() => Promise.resolve({})),
-		} as unknown as CodeReviewer;
+	mockCodeReviewer = {
+		review: mock(async function* () {
+			yield {
+				type: "review_start",
+				metadata: { timestamp: Date.now() },
+			};
+			yield {
+				type: "review_data",
+				data: {
+					sourceBranch: "feature",
+					targetBranch: "main",
+					currentCommit: "abc123",
+					comments: [],
+				},
+				metadata: { timestamp: Date.now() },
+			};
+			yield {
+				type: "review_success",
+				dataSource: "live",
+				commentCount: 0,
+				metadata: { timestamp: Date.now() },
+			};
+		}),
+		reviewNode: mock(() => Promise.resolve({})),
+	} as unknown as CodeReviewer;
 
-		mockCache = {
-			get: mock(() => undefined),
-			getComments: mock(async () => []),
-			set: mock(() => {}),
-			setCacheMock: mock(() => {}),
-		} as unknown as LocalCache;
-		actionExecutor = new ActionExecutor(
-			mockPRWorkflow,
-			mockCommentResolution,
-			mockFixSession,
-			mockCommentDisplay,
-			mockContextGatherer,
-			mockCodeReviewer,
-			mockCache,
-		);
+	mockCache = {
+		get: mock(() => undefined),
+		getComments: mock(async () => []),
+		set: mock(() => {}),
+		setCacheMock: mock(() => {}),
+	} as unknown as LocalCache;
+	actionExecutor = new ActionExecutor(
+		mockPRWorkflow,
+		mockReviewHandler,
+		mockCommentResolution,
+		mockFixSession,
+		mockCommentDisplay,
+		mockContextGatherer,
+		mockCodeReviewer,
+		mockCache,
+	);
 	});
 
 	describe("executeReview", () => {
@@ -190,7 +200,7 @@ describe("ActionExecutor", () => {
 				yield {
 					type: "review_start",
 					metadata: { timestamp: Date.now() },
-				} satisfies ReviewEvent;
+				};
 				yield {
 					type: "review_data",
 					data: {
@@ -200,16 +210,16 @@ describe("ActionExecutor", () => {
 						comments: [],
 					},
 					metadata: { timestamp: Date.now() },
-				} satisfies ReviewEvent;
+				};
 				yield {
 					type: "review_success",
 					dataSource: "live",
 					commentCount: 0,
 					metadata: { timestamp: Date.now() },
-				} satisfies ReviewEvent;
+				};
 			});
 
-			const result = await actionExecutor.executeReview(samplePR);
+			const result = await actionExecutor.executeReview(samplePR, sampleState);
 
 			expect(reviewCalled).toBe(true);
 			expect(mockPRWorkflow.fetchCommitHistory).toHaveBeenCalledWith(samplePR);
@@ -220,133 +230,153 @@ describe("ActionExecutor", () => {
 			expect(result.commentsCreated).toBe(0);
 		});
 
-		it("should return comments created during review", async () => {
-			// Mock cache to return 2 pending comments
-			const pendingComments: ReviewCommentWithId[] = [
-				{
-					id: "1",
-					file: "test.ts",
-					message: "Test comment",
-					status: "pending",
-					line: 10,
+	it("should return comments created during review", async () => {
+		// Mock cache to return 2 pending comments
+		const pendingComments: ReviewCommentWithId[] = [
+			{
+				id: "1",
+				file: "test.ts",
+				message: "Test comment",
+				status: "pending",
+				line: 10,
+			},
+			{
+				id: "2",
+				file: "test.ts",
+				message: "Test comment 2",
+				status: "pending",
+				line: 20,
+			},
+		];
+
+		// Mock the review generator to yield comments
+		mockCodeReviewer.review = mock(async function* () {
+			yield {
+				type: "review_start",
+				metadata: { timestamp: Date.now() },
+			};
+			yield {
+				type: "review_data",
+				data: {
+					sourceBranch: "feature",
+					targetBranch: "main",
+					currentCommit: "abc123",
+					comments: pendingComments,
 				},
-				{
-					id: "2",
-					file: "test.ts",
-					message: "Test comment 2",
-					status: "pending",
-					line: 20,
-				},
-			];
-
-			// Mock the review generator to yield comments
-			mockCodeReviewer.review = mock(async function* () {
-				yield {
-					type: "review_start",
-					metadata: { timestamp: Date.now() },
-				} satisfies ReviewEvent;
-				yield {
-					type: "review_data",
-					data: {
-						sourceBranch: "feature",
-						targetBranch: "main",
-						currentCommit: "abc123",
-						comments: pendingComments,
-					},
-					metadata: { timestamp: Date.now() },
-				} satisfies ReviewEvent;
-				yield {
-					type: "review_success",
-					dataSource: "live",
-					commentCount: 2,
-					metadata: { timestamp: Date.now() },
-				} satisfies ReviewEvent;
-			});
-
-			// Mock the cache to return the comments after save
-			mockCache.getComments = mock(async () => pendingComments);
-
-			const result = await actionExecutor.executeReview(samplePR);
-
-			expect(result.commentsCreated).toBe(2);
-			expect(result.hasErrors).toBe(false);
+				metadata: { timestamp: Date.now() },
+			};
+			yield {
+				type: "review_success",
+				dataSource: "live",
+				commentCount: 2,
+				metadata: { timestamp: Date.now() },
+			};
 		});
 
-		it("should handle review errors", async () => {
-			// Mock the review generator to yield an error event
-			mockCodeReviewer.review = mock(async function* () {
-				yield {
-					type: "review_start",
-					metadata: { timestamp: Date.now() },
-				} satisfies ReviewEvent;
-				yield {
-					type: "review_error",
-					message: "Review failed",
-					metadata: { timestamp: Date.now() },
-				} satisfies ReviewEvent;
-			});
+		// Mock the cache to return the comments after save
+		mockCache.getComments = mock(async () => pendingComments);
 
-			const result = await actionExecutor.executeReview(samplePR);
+		const result = await actionExecutor.executeReview(samplePR, sampleState);
 
-			expect(result.hasErrors).toBe(true);
-		});
-
-		it("should display review summary when comments exist", async () => {
-			const comments: ReviewCommentWithId[] = [
-				{
-					id: "1",
-					file: "test.ts",
-					message: "Test",
-					status: "pending",
-					line: 10,
-				},
-			];
-
-			// Mock the review generator to yield comments
-			mockCodeReviewer.review = mock(async function* () {
-				yield {
-					type: "review_start",
-					metadata: { timestamp: Date.now() },
-				} satisfies ReviewEvent;
-				yield {
-					type: "review_data",
-					data: {
-						sourceBranch: "feature",
-						targetBranch: "main",
-						currentCommit: "abc123",
-						comments: comments,
-					},
-					metadata: { timestamp: Date.now() },
-				} satisfies ReviewEvent;
-				yield {
-					type: "review_success",
-					dataSource: "live",
-					commentCount: 1,
-					metadata: { timestamp: Date.now() },
-				} satisfies ReviewEvent;
-			});
-
-			// Mock the cache to return the comments
-			mockCache.getComments = mock(async () => comments);
-
-			await actionExecutor.executeReview(samplePR);
-
-			expect(mockCommentDisplay.displayReviewSummary).toHaveBeenCalled();
-		});
-
-		it("should handle exceptions gracefully", async () => {
-			mockPRWorkflow.fetchCommitHistory = mock(async () => {
-				throw new Error("Network error");
-			});
-
-			const result = await actionExecutor.executeReview(samplePR);
-
-			expect(result.hasErrors).toBe(true);
-			expect(result.commentsCreated).toBe(0);
-		});
+		expect(result.commentsCreated).toBe(2);
+		expect(result.hasErrors).toBe(false);
 	});
 
-	describe("executeHandlePending", () => {
+	it("should handle review errors", async () => {
+	// Mock the review generator to yield an error event
+	mockCodeReviewer.review = mock(async function* () {
+		yield {
+			type: "review_start",
+			metadata: { timestamp: Date.now() },
+		};
+		yield {
+			type: "review_error",
+			message: "Review failed",
+			metadata: { timestamp: Date.now() },
+		};
+	});
+
+	const result = await actionExecutor.executeReview(samplePR, sampleState);
+
+	expect(result.hasErrors).toBe(true);
+});
+
+it("should handle context errors", async () => {
+	// This test isn't relevant anymore since context gathering is separate from review
+	// Review doesn't have context errors - it either succeeds or fails during review
+	// Mock the review generator to yield an error event
+	mockCodeReviewer.review = mock(async function* () {
+		yield {
+			type: "review_start",
+			metadata: { timestamp: Date.now() },
+		};
+		yield {
+			type: "review_error",
+			message: "Processing error",
+			metadata: { timestamp: Date.now() },
+		};
+	});
+
+	const result = await actionExecutor.executeReview(samplePR, sampleState);
+
+	expect(result.hasErrors).toBe(true);
+});
+
+it("should display review summary when comments exist", async () => {
+	const comments: ReviewCommentWithId[] = [
+		{
+			id: "1",
+			file: "test.ts",
+			message: "Test",
+			status: "pending",
+			line: 10,
+		},
+	];
+
+	// Mock the review generator to yield comments
+	mockCodeReviewer.review = mock(async function* () {
+		yield {
+			type: "review_start",
+			metadata: { timestamp: Date.now() },
+		};
+		yield {
+			type: "review_data",
+			data: {
+				sourceBranch: "feature",
+				targetBranch: "main",
+				currentCommit: "abc123",
+				comments: comments,
+			},
+			metadata: { timestamp: Date.now() },
+		};
+		yield {
+			type: "review_success",
+			dataSource: "live",
+			commentCount: 1,
+			metadata: { timestamp: Date.now() },
+		};
+	});
+
+	// Mock the cache to return the comments
+	mockCache.getComments = mock(async () => comments);
+
+	await actionExecutor.executeReview(samplePR, sampleState);
+
+	expect(mockCommentDisplay.displayReviewSummary).toHaveBeenCalled();
+});
+
+it("should handle exceptions gracefully", async () => {
+	mockPRWorkflow.fetchCommitHistory = mock(async () => {
+		throw new Error("Network error");
+	});
+
+	const result = await actionExecutor.executeReview(samplePR, sampleState);
+
+	expect(result.hasErrors).toBe(true);
+	expect(result.commentsCreated).toBe(0);
+});
+});
+
 		it("should track comment resolution summary", async () => {
 			// Mock handleComments to return a specific result
 			mockCommentResolution.handleComments = mock(async () => {

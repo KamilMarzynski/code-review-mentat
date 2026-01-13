@@ -7,7 +7,6 @@ import { CommentResolutionManager } from "./cli/managers/comment-resolution-mana
 import { FixSessionOrchestrator } from "./cli/managers/fix-session-orchestrator";
 import { PostActionHandler } from "./cli/managers/post-action-handler";
 import { PRWorkflowManager } from "./cli/managers/pr-workflow-manager";
-import { ReviewStreamHandler } from "./cli/managers/review-stream-handler";
 import { WorkflowStateManager } from "./cli/managers/workflow-state-manager";
 import { CLIOrchestrator } from "./cli/orchestrator";
 import GitOperations from "./git/operations";
@@ -16,7 +15,6 @@ import { createMCPClient, getMCPTools } from "./mcp/client";
 import { CodeReviewer } from "./review/code-reviewer";
 import { CommentFixer } from "./review/comment-fixer";
 import { ContextGatherer } from "./review/context-gatherer";
-import { ReviewService } from "./review/review-service";
 import { UILogger } from "./ui/logger";
 
 const { PATH_TO_CLAUDE } = process.env;
@@ -25,6 +23,34 @@ if (!PATH_TO_CLAUDE) {
 }
 
 const main = async () => {
+	// ============================================================================
+	// Dependency Injection Architecture
+	// ============================================================================
+	// This file orchestrates the creation and wiring of all application dependencies.
+	// Dependencies are organized in layers:
+	//
+	// 1. Infrastructure Layer (Singletons)
+	//    - git: GitOperations
+	//    - cache: LocalCache
+	//    - ui: UILogger
+	//    - model: ChatAnthropic (LangChain)
+	//
+	// 2. Service Layer
+	//    - Context: ContextGatherer, CodeReviewer, ReviewService
+	//    - Comments: CommentFixer, CommentResolutionManager, CommentDisplayService
+	//    - Workflow: PRWorkflowManager
+	//
+	// 3. Manager Layer (Orchestration)
+	//    - WorkflowStateManager: State detection
+	//    - ActionExecutor: Action execution
+	//    - PostActionHandler: Smart flow transitions
+	//    - ReviewStreamHandler: Review coordination
+	//    - FixSessionOrchestrator: Fix workflow
+	//
+	// 4. Orchestrator Layer
+	//    - CLIOrchestrator: Main entry point with menu-driven workflow
+	// ============================================================================
+
 	// Start MCP initialization in background (don't await yet)
 	const mcpInitPromise = (async () => {
 		const mcpClient = createMCPClient();
@@ -32,7 +58,9 @@ const main = async () => {
 		return { mcpClient, tools };
 	})();
 
-	// Initialize infrastructure services (can happen in parallel with MCP)
+	// ============================================================================
+	// Infrastructure Services (Singleton Pattern)
+	// ============================================================================
 	const git = new GitOperations();
 	const cache = new LocalCache();
 	const ui = new UILogger();
@@ -43,6 +71,9 @@ const main = async () => {
 		temperature: 0,
 	});
 
+	// ============================================================================
+	// Service Layer
+	// ============================================================================
 	// Factory function to lazily create context gatherer when needed
 	const createContextGatherer = async () => {
 		const { tools } = await mcpInitPromise;
@@ -78,7 +109,6 @@ Provide a structured summary:
 
 	// Initialize review services
 	const codeReviewer = new CodeReviewer(PATH_TO_CLAUDE);
-	const reviewService = new ReviewService(createContextGatherer, codeReviewer);
 	const commentFixer = new CommentFixer(PATH_TO_CLAUDE);
 
 	// Provider factory function
@@ -87,37 +117,41 @@ Provide a structured summary:
 
 	const prWorkflow = new PRWorkflowManager(git, createProvider, ui);
 	const commentResolution = new CommentResolutionManager(cache, ui);
-	const reviewHandler = new ReviewStreamHandler(
-		reviewService,
-		cache,
-		ui,
-		commentResolution,
-	);
+
 	const fixSession = new FixSessionOrchestrator(commentFixer, git, cache, ui);
 	const commentDisplay = new CommentDisplayService(ui);
 
-	// Initialize Phase 1-4 managers
+	// ============================================================================
+	// Manager Layer (Menu-Driven Workflow Architecture)
+	// ============================================================================
+	// These managers implement the menu-driven state machine:
+	// - WorkflowStateManager: Detects current state and generates menu options
+	// - ActionExecutor: Executes user-selected actions
+	// - PostActionHandler: Provides smart flow transitions after actions
+	// ============================================================================
 	const stateManager = new WorkflowStateManager(cache);
 	const contextGatherer = await createContextGatherer();
 	const actionExecutor = new ActionExecutor(
 		prWorkflow,
-		reviewHandler,
 		commentResolution,
 		fixSession,
 		commentDisplay,
 		contextGatherer,
+		codeReviewer,
 		cache,
 	);
 	const postActionHandler = new PostActionHandler(stateManager);
 
-	// Initialize and run orchestrator
+	// ============================================================================
+	// Orchestrator Layer
+	// ============================================================================
+	// CLIOrchestrator is the main entry point:
+	// - Handles initial setup (workspace check, PR selection, repo preparation)
+	// - Runs the menu loop (state detection → menu → action → post-action)
+	// - Manages cleanup and error handling
+	// ============================================================================
 	const orchestrator = new CLIOrchestrator(
 		prWorkflow,
-		reviewHandler,
-		commentResolution,
-		fixSession,
-		commentDisplay,
-		cache,
 		stateManager,
 		actionExecutor,
 		postActionHandler,

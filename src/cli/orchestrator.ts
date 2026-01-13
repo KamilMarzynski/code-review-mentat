@@ -1,16 +1,11 @@
-import type LocalCache from "../cache/local-cache";
-import type { GitProvider, PullRequest } from "../git-providers/types";
+import type { PullRequest } from "../git-providers/types";
 import { ui } from "../ui/logger";
 import { theme } from "../ui/theme";
 import { promptWorkflowMenu } from "./cli-prompts";
 import { displayHeader } from "./display";
 import type { ActionExecutor } from "./managers/action-executor";
-import type { CommentDisplayService } from "./managers/comment-display-service";
-import type { CommentResolutionManager } from "./managers/comment-resolution-manager";
-import type { FixSessionOrchestrator } from "./managers/fix-session-orchestrator";
 import type { PostActionHandler } from "./managers/post-action-handler";
 import type { PRWorkflowManager } from "./managers/pr-workflow-manager";
-import type { ReviewStreamHandler } from "./managers/review-stream-handler";
 import type { WorkflowStateManager } from "./managers/workflow-state-manager";
 import type { WorkflowAction } from "./types";
 
@@ -25,11 +20,6 @@ interface SetupContext {
 export class CLIOrchestrator {
 	constructor(
 		private prWorkflow: PRWorkflowManager,
-		_reviewHandler: ReviewStreamHandler,
-		_commentResolution: CommentResolutionManager,
-		_fixSession: FixSessionOrchestrator,
-		_commentDisplay: CommentDisplayService,
-		_cache: LocalCache,
 		private stateManager: WorkflowStateManager,
 		private actionExecutor: ActionExecutor,
 		private postActionHandler: PostActionHandler,
@@ -40,13 +30,9 @@ export class CLIOrchestrator {
 		ui.intro(theme.computation("Mentat analysis protocol initiated"));
 
 		try {
-			// Phase 1: Initial Setup
 			const context = await this.initialSetup();
 
-			// Phase 2: Main Menu Loop
 			await this.menuLoop(context);
-
-			// Phase 3: Cleanup handled in finally block
 		} catch (error) {
 			ui.cancel(
 				theme.error("✗ Mentat encountered an error:\n") +
@@ -61,7 +47,6 @@ export class CLIOrchestrator {
 	}
 
 	/**
-	 * Phase 1: Initial Setup
 	 * - Check workspace
 	 * - Select remote and PR
 	 * - Prepare repository
@@ -94,7 +79,6 @@ export class CLIOrchestrator {
 	}
 
 	/**
-	 * Phase 2: Main Menu Loop
 	 * - Detect workflow state
 	 * - Show menu
 	 * - Execute actions
@@ -124,14 +108,14 @@ export class CLIOrchestrator {
 				}
 
 				// 6. Execute action
-				await this.executeAction(action, context, state);
+				await this.executeAction(action, context);
 
 				// 7. Handle post-action smart flow
 				const nextAction = await this.handlePostAction(action, context);
 
 				// 8. If next action specified, execute it (smart flow)
 				if (nextAction !== "show_menu") {
-					await this.executeAction(nextAction, context, state);
+					await this.executeAction(nextAction, context);
 				}
 			}
 		} finally {
@@ -146,7 +130,6 @@ export class CLIOrchestrator {
 	private async executeAction(
 		action: WorkflowAction,
 		context: SetupContext,
-		_state: unknown, // WorkflowState from state detection (not used directly here)
 	): Promise<void> {
 		switch (action) {
 			case "gather_context":
@@ -158,10 +141,7 @@ export class CLIOrchestrator {
 				break;
 
 			case "run_review":
-				await this.actionExecutor.executeReview(
-					context.pr,
-					await this.stateManager.detectState(context.pr),
-				);
+				await this.actionExecutor.executeReview(context.pr);
 				break;
 
 			case "handle_pending":

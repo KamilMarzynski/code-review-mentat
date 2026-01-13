@@ -15,11 +15,10 @@ export class CodeReviewer {
 		this.executor = new ClaudeQueryExecutor(claudePath);
 	}
 
-	public async review(
+	public async *review(
 		state: ReviewState,
-		config: LangGraphRunnableConfig,
-	): Promise<Partial<ReviewState>> {
-		const writer = this.createWriter(config);
+	): AsyncGenerator<ReviewEvent | ReviewState> {
+		const writer = this.createGeneratorWriter();
 		this.emitReviewStart(writer);
 
 		const prompt = this.buildPrompt(state);
@@ -63,11 +62,12 @@ export class CodeReviewer {
 
 		if (!result.success) {
 			this.emitClaudeError(writer, result.error);
-			return {
+			yield {
 				...state,
 				comments: [],
 				result: `Review failed: ${result.error.message}`,
 			};
+			return;
 		}
 
 		const comments = result.data.comments;
@@ -81,7 +81,7 @@ export class CodeReviewer {
 		this.emitSuccess(writer, validatedComments);
 		this.emitReviewData(writer, state, validatedComments);
 
-		return {
+		yield {
 			...state,
 			comments: validatedComments,
 			result: "Review completed successfully",
@@ -137,6 +137,12 @@ export class CodeReviewer {
 				// Silent no-op when streaming not configured
 			})
 		);
+	}
+
+	private createGeneratorWriter(): (event: ReviewEvent) => void {
+		return function* (event: ReviewEvent) {
+			yield event;
+		};
 	}
 
 	private buildPrompt(state: ReviewState): string {

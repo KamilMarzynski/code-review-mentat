@@ -37,7 +37,6 @@ export class FixSessionOrchestrator {
 	): Promise<void> {
 		console.log("");
 
-		// PHASE 1: PLANNING
 		const plan = await this.runPlanningPhase(
 			comment,
 			prKey,
@@ -49,7 +48,6 @@ export class FixSessionOrchestrator {
 			return; // Planning was cancelled or failed
 		}
 
-		// PHASE 2: EXECUTION
 		await this.runExecutionPhase(
 			comment,
 			prKey,
