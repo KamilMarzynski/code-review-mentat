@@ -42,7 +42,6 @@ describe("ActionExecutor", () => {
 	let mockCommentDisplay: CommentDisplayService;
 	let mockContextGatherer: ContextGatherer;
 	let mockCache: LocalCache;
-	let mockProvider: GitProvider;
 
 	// Sample pull request for testing
 	const samplePR: PullRequest = {
@@ -138,8 +137,6 @@ describe("ActionExecutor", () => {
 			set: mock(() => {}),
 		} as unknown as LocalCache;
 
-		mockProvider = {} as GitProvider;
-
 		actionExecutor = new ActionExecutor(
 			mockPRWorkflow,
 			mockReviewHandler,
@@ -160,9 +157,7 @@ describe("ActionExecutor", () => {
 
 			expect(mockPRWorkflow.fetchCommitHistory).toHaveBeenCalledWith(samplePR);
 			expect(mockPRWorkflow.analyzeChanges).toHaveBeenCalledWith(samplePR);
-			expect(mockReviewHandler.determineContextStrategy).toHaveBeenCalledWith(
-				samplePR,
-			);
+			expect(mockReviewHandler.determineContextStrategy).not.toHaveBeenCalled();
 			expect(mockReviewHandler.processReviewStream).toHaveBeenCalled();
 			expect(result.hasErrors).toBe(false);
 			expect(result.commentsCreated).toBe(0);
