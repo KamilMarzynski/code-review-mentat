@@ -12,7 +12,7 @@ import type { ContextEvent, ReviewState } from "./types";
 export class ContextGatherer {
 	constructor(private agent: ReactAgent) {}
 
-	public async gather(
+	public async gatherNode(
 		state: ReviewState,
 		config: LangGraphRunnableConfig,
 	): Promise<Partial<ReviewState>> {
@@ -45,6 +45,37 @@ export class ContextGatherer {
 		}
 	}
 
+	public async *gather(
+		state: ReviewState,
+	): AsyncGenerator<Partial<ContextEvent | ReviewState>> {
+		const writer = this.createGeneratorWriter();
+
+		this.emitContextStart(writer);
+		try {
+			const message = this.buildContextMessage(state);
+			const { context, allMessages } = await this.processAgentStream(
+				state,
+				message,
+				writer,
+			);
+
+			this.emitSuccess(writer);
+			this.emitContextData(writer, state, context);
+
+			yield {
+				...state,
+				context,
+				messages: allMessages,
+			};
+		} catch (error) {
+			this.emitError(writer, error as Error);
+			yield {
+				...state,
+				context: "Context gathering failed.",
+			};
+		}
+	}
+
 	private createWriter(
 		config: LangGraphRunnableConfig,
 	): (event: ContextEvent) => void {
@@ -54,6 +85,12 @@ export class ContextGatherer {
 				// Silent no-op when streaming not configured
 			})
 		);
+	}
+
+	private createGeneratorWriter(): (event: ContextEvent) => void {
+		return function* (event: ContextEvent) {
+			yield event;
+		};
 	}
 
 	private buildContextMessage(state: ReviewState): HumanMessage {

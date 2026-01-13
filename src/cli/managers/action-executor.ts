@@ -4,6 +4,8 @@ import {
 	getPRKey,
 	type PullRequest,
 } from "../../git-providers/types";
+import type { ContextGatherer } from "../../review/context-gatherer";
+import type { ContextEvent, ReviewState } from "../../review/types";
 import { ui } from "../../ui/logger";
 import { theme } from "../../ui/theme";
 import {
@@ -40,6 +42,7 @@ export class ActionExecutor {
 		private commentResolution: CommentResolutionManager,
 		private fixSession: FixSessionOrchestrator,
 		private commentDisplay: CommentDisplayService,
+		private contextGatherer: ContextGatherer,
 		private cache: LocalCache,
 	) {}
 
@@ -49,21 +52,149 @@ export class ActionExecutor {
 	 * @param pr - Pull request to gather context for
 	 * @param refresh - Whether to refresh existing context
 	 */
-	async executeGatherContext(
-		_pr: PullRequest,
-		refresh: boolean,
-	): Promise<void> {
-		// Context gathering is handled as part of review execution
-		// This method exists for future standalone context gathering
-		ui.info(
-			theme.secondary(
-				refresh ? "🔄 Refreshing context..." : "🔍 Gathering context...",
-			),
+	async executeGatherContext(pr: PullRequest, refresh: boolean): Promise<void> {
+		const spinner = ui.spinner();
+		const toolsByType = new Map<string, number>();
+		let hasError = false;
+		let spinnerStarted = false;
+
+		try {
+			// Fetch commit history and edited files
+			const commitMessages = await this.prWorkflow.fetchCommitHistory(pr);
+			const { editedFiles } = await this.prWorkflow.analyzeChanges(pr);
+
+			// TODO: There will be no state, there will be just input, but for now this is debt
+			const state: ReviewState = {
+				commits: commitMessages,
+				title: pr.title,
+				description: pr.description || "",
+				editedFiles,
+				sourceBranch: pr.source.name,
+				targetBranch: pr.target.name,
+				sourceHash: pr.source.commitHash,
+				targetHash: pr.target.commitHash,
+				diff: "", // Not needed for context gathering
+				messages: [],
+				gatherContext: true,
+				refreshCache: refresh,
+				context: undefined,
+				comments: [],
+			};
+
+			ui.section("Deep Context Gathering");
+			spinner.start(
+				theme.accent("Gathering deep context from pull request metadata"),
+			);
+			spinnerStarted = true;
+
+			// Stream context gathering events
+			for await (const event of this.contextGatherer.gather(state)) {
+				// Check if this is a context event
+				if ("type" in event) {
+					const contextEvent = event as ContextEvent;
+
+					switch (contextEvent.type) {
+						case "context_tool_call": {
+							if (hasError) break;
+
+							const count = toolsByType.get(contextEvent.toolName) || 0;
+							toolsByType.set(contextEvent.toolName, count + 1);
+
+							const displayMessage = this.getContextToolMessage(
+								contextEvent.toolName,
+								contextEvent.input,
+							);
+							const spinnerMessage = this.extractSpinnerMessage(displayMessage);
+							ui.info(displayMessage);
+							spinner.message(theme.secondary(spinnerMessage));
+							break;
+						}
+
+						case "context_tool_call_reasoning":
+							ui.step(contextEvent.message);
+							break;
+
+						case "context_tool_result":
+							if (!hasError) {
+								spinner.message(theme.secondary("Thinking"));
+							}
+							break;
+
+						case "context_success":
+							if (!hasError) {
+								ui.sectionComplete("Deep context synthesis complete");
+							}
+							break;
+
+						case "context_error":
+							hasError = true;
+							spinner.stop(theme.error("✗ Context gathering failed"));
+							spinnerStarted = false;
+							ui.error(contextEvent.message);
+							break;
+
+						case "context_data":
+							// Save to cache
+							this.cache.set(
+								{
+									sourceBranch: contextEvent.data.sourceBranch,
+									targetBranch: contextEvent.data.targetBranch,
+									currentCommit: contextEvent.data.currentCommit,
+								},
+								contextEvent.data.context,
+							);
+							break;
+					}
+				}
+			}
+
+			if (!hasError && spinnerStarted) {
+				spinner.stop(theme.success("✓ Context gathered successfully"));
+				spinnerStarted = false;
+			}
+		} catch (error) {
+			if (spinnerStarted) {
+				spinner.stop(theme.error("✗ Context gathering failed"));
+			}
+			ui.error(
+				theme.error("✗ Context gathering failed:\n") +
+					theme.muted(`   ${(error as Error).message}`),
+			);
+		}
+	}
+
+	/**
+	 * Extract a clean spinner message from a display message
+	 * Removes emojis and extracts the action phrase
+	 */
+	private extractSpinnerMessage(displayMessage: string): string {
+		// Remove emoji characters using regex (matches most emoji ranges)
+		const withoutEmoji = displayMessage.replace(
+			/[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/gu,
+			"",
 		);
 
-		// For now, context gathering is tied to review execution
-		// In the future, this could be separated into a standalone operation
-		ui.success(theme.success("✓ Context strategy updated"));
+		// Trim and take the part before any colon (the action, not the details)
+		const action = withoutEmoji.split(":")[0]?.trim() ?? "";
+
+		// If we got something meaningful, use it; otherwise use the cleaned message
+		return action.length > 0 ? action : withoutEmoji.trim();
+	}
+
+	/**
+	 * Get display message for context gathering tool calls
+	 */
+	private getContextToolMessage(toolName: string, arg?: string): string {
+		const messages: Record<string, string> = {
+			search: `🔍 Searching Jira${arg ? `: "${arg}"` : ""}`,
+			getIssue: `📋 Fetching issue${arg ? ` ${arg}` : ""}`,
+			getJiraIssue: `📋 Fetching issue${arg ? ` ${arg}` : ""}`,
+			searchConfluencePages: `📚 Searching Confluence${arg ? `: "${arg}"` : ""}`,
+			getConfluencePage: `📄 Reading page${arg ? ` ${arg}` : ""}`,
+			fetch: `📡 Fetching resource${arg ? `: ${arg}` : ""}`,
+			getAccessibleAtlassianResources: `🌐 Listing accessible resources${arg ? `: ${arg}` : ""}`,
+		};
+		return messages[toolName] || `⚡ ${toolName}${arg ? `: ${arg}` : ""}`;
 	}
 
 	/**

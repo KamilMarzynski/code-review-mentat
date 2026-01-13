@@ -79,7 +79,7 @@ export class ReviewService {
 				"contextSearchCall",
 				async (state: ReviewState, config: LangGraphRunnableConfig) => {
 					const gatherer = await this.getContextGatherer();
-					return gatherer.gather(state, config);
+					return gatherer.gatherNode(state, config);
 				},
 			)
 			.addNode(

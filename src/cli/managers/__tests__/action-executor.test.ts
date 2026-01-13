@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it, mock } from "bun:test";
 import type LocalCache from "../../../cache/local-cache";
 import type { GitProvider, PullRequest } from "../../../git-providers/types";
+import type { ContextGatherer } from "../../../review/context-gatherer";
+import type { ContextEvent, ReviewCommentWithId } from "../../../review/types";
 import type { WorkflowState } from "../../types";
 import { ActionExecutor } from "../action-executor";
 import type { CommentDisplayService } from "../comment-display-service";
@@ -8,7 +10,6 @@ import type { CommentResolutionManager } from "../comment-resolution-manager";
 import type { FixSessionOrchestrator } from "../fix-session-orchestrator";
 import type { PRWorkflowManager } from "../pr-workflow-manager";
 import type { ReviewStreamHandler } from "../review-stream-handler";
-import type { ReviewCommentWithId } from "../../../review/types";
 
 /**
  * Unit tests for ActionExecutor
@@ -22,6 +23,7 @@ describe("ActionExecutor", () => {
 	let mockCommentResolution: CommentResolutionManager;
 	let mockFixSession: FixSessionOrchestrator;
 	let mockCommentDisplay: CommentDisplayService;
+	let mockContextGatherer: ContextGatherer;
 	let mockCache: LocalCache;
 	let mockProvider: GitProvider;
 
@@ -90,8 +92,33 @@ describe("ActionExecutor", () => {
 			displayCommentWithContext: mock(async () => {}),
 		} as unknown as CommentDisplayService;
 
+		mockContextGatherer = {
+			gather: mock(async function* () {
+				yield {
+					type: "context_start",
+					metadata: { timestamp: Date.now() },
+				};
+				yield {
+					type: "context_success",
+					dataSource: "live",
+					metadata: { timestamp: Date.now() },
+				};
+				yield {
+					type: "context_data",
+					data: {
+						sourceBranch: "feature",
+						targetBranch: "main",
+						currentCommit: "abc123",
+						context: "Test context",
+					},
+					metadata: { timestamp: Date.now() },
+				};
+			}),
+		} as unknown as ContextGatherer;
+
 		mockCache = {
 			getComments: mock(async () => []),
+			set: mock(() => {}),
 		} as unknown as LocalCache;
 
 		mockProvider = {} as GitProvider;
@@ -102,6 +129,7 @@ describe("ActionExecutor", () => {
 			mockCommentResolution,
 			mockFixSession,
 			mockCommentDisplay,
+			mockContextGatherer,
 			mockCache,
 		);
 	});
@@ -376,8 +404,49 @@ describe("ActionExecutor", () => {
 	describe("executeGatherContext", () => {
 		it("should execute context gathering", async () => {
 			await actionExecutor.executeGatherContext(samplePR, false);
-			// Context gathering is currently a placeholder
-			// This test ensures the method exists and can be called
+
+			expect(mockPRWorkflow.fetchCommitHistory).toHaveBeenCalledWith(samplePR);
+			expect(mockPRWorkflow.analyzeChanges).toHaveBeenCalledWith(samplePR);
+			expect(mockContextGatherer.gather).toHaveBeenCalled();
+			expect(mockCache.set).toHaveBeenCalled();
+		});
+
+		it("should handle refresh flag", async () => {
+			await actionExecutor.executeGatherContext(samplePR, true);
+
+			expect(mockContextGatherer.gather).toHaveBeenCalled();
+		});
+
+		it("should handle errors gracefully", async () => {
+			mockContextGatherer.gather = mock(async function* () {
+				yield {
+					type: "context_error",
+					message: "Failed to gather context",
+					metadata: { timestamp: Date.now() },
+				} satisfies ContextEvent;
+			});
+
+			await actionExecutor.executeGatherContext(samplePR, false);
+
+			// Should complete without throwing
+			expect(mockContextGatherer.gather).toHaveBeenCalled();
+		});
+
+		it("should handle exceptions gracefully", async () => {
+			mockPRWorkflow.fetchCommitHistory = mock(async () => {
+				throw new Error("Network error");
+			});
+
+			// Suppress console output for this test
+			const consoleError = console.error;
+			console.error = () => {};
+
+			await actionExecutor.executeGatherContext(samplePR, false);
+
+			console.error = consoleError;
+
+			// Should complete without throwing
+			expect(mockPRWorkflow.fetchCommitHistory).toHaveBeenCalled();
 		});
 	});
 });
