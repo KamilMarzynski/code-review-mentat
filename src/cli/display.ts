@@ -77,3 +77,52 @@ export function displayComments(comments: ReviewComment[]): void {
 		ui.success(`${emoji.success} No issues detected. Code quality acceptable.`);
 	}
 }
+
+export function displayEditedFiles(editedFiles: string[]): void {
+	const MAX_DISPLAYED_FILES = 4;
+
+	if (editedFiles.length > 0) {
+		const displayCount = Math.min(MAX_DISPLAYED_FILES, editedFiles.length);
+		const remaining = editedFiles.length - displayCount;
+
+		ui.info(theme.muted("Modified files:"));
+		for (let i = 0; i < displayCount; i++) {
+			const file = editedFiles[i];
+			// Truncate long paths from the middle
+			if (file && file.length > 70) {
+				const parts = file.split("/");
+				const truncated = `.../${parts.slice(-2).join("/")}`;
+				ui.log(theme.secondary(`  • ${truncated}`));
+			} else {
+				ui.log(theme.secondary(`  • ${file}`));
+			}
+		}
+		if (remaining > 0) {
+			ui.log(theme.muted(`  • ...and ${remaining} more file(s)`));
+		}
+	}
+}
+
+export function displayCommitHistory(commitMessages: string[]): void {
+	const MAX_DISPLAYED_COMMITS = 4;
+
+	if (commitMessages.length > 0) {
+		const displayCount = Math.min(MAX_DISPLAYED_COMMITS, commitMessages.length);
+		const remaining = commitMessages.length - displayCount;
+
+		ui.info(theme.muted("Commit history:"));
+		for (let i = 0; i < displayCount; i++) {
+			const commit = commitMessages[i];
+			// Truncate long commit messages
+			if (commit && commit.length > 70) {
+				const truncated = `${commit.substring(0, 67)}...`;
+				ui.log(theme.secondary(`  • ${truncated}`));
+			} else {
+				ui.log(theme.secondary(`  • ${commit}`));
+			}
+		}
+		if (remaining > 0) {
+			ui.log(theme.muted(`  • ...and ${remaining} more commit(s)`));
+		}
+	}
+}

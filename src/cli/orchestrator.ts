@@ -2,7 +2,11 @@ import type { PullRequest } from "../git-providers/types";
 import { ui } from "../ui/logger";
 import { theme } from "../ui/theme";
 import { promptWorkflowMenu } from "./cli-prompts";
-import { displayHeader } from "./display";
+import {
+	displayCommitHistory,
+	displayEditedFiles,
+	displayHeader,
+} from "./display";
 import type { ActionExecutor } from "./managers/action-executor";
 import type { PostActionHandler } from "./managers/post-action-handler";
 import type { PRWorkflowManager } from "./managers/pr-workflow-manager";
@@ -72,6 +76,15 @@ export class CLIOrchestrator {
 		// Repository preparation
 		await this.prWorkflow.prepareRepository(selectedRemote, selectedPr);
 
+		// Fetch and display PR details (files and commits) once after selection
+		const commitMessages = await this.prWorkflow.fetchCommitHistory(selectedPr);
+		const { editedFiles } = await this.prWorkflow.analyzeChanges(selectedPr);
+
+		ui.space();
+		displayEditedFiles(editedFiles);
+		ui.space();
+		displayCommitHistory(commitMessages);
+
 		return {
 			pr: selectedPr,
 			cleanup,
@@ -133,14 +146,18 @@ export class CLIOrchestrator {
 	): Promise<void> {
 		switch (action) {
 			case "gather_context":
-				await this.actionExecutor.executeGatherContext(context.pr, false);
-				break;
-
 			case "refresh_context":
-				await this.actionExecutor.executeGatherContext(context.pr, true);
+				await this.actionExecutor.executeGatherContext(context.pr);
 				break;
 
 			case "run_review":
+				await this.actionExecutor.executeReview(context.pr);
+				break;
+
+			case "review_with_context":
+				// First gather context
+				await this.actionExecutor.executeGatherContext(context.pr);
+				// Then run review
 				await this.actionExecutor.executeReview(context.pr);
 				break;
 

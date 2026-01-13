@@ -477,7 +477,7 @@ describe("ActionExecutor", () => {
 				} satisfies ContextEvent;
 			});
 
-			await actionExecutor.executeGatherContext(samplePR, false);
+			await actionExecutor.executeGatherContext(samplePR);
 
 			expect(mockPRWorkflow.fetchCommitHistory).toHaveBeenCalledWith(samplePR);
 			expect(mockPRWorkflow.analyzeChanges).toHaveBeenCalledWith(samplePR);
@@ -486,7 +486,7 @@ describe("ActionExecutor", () => {
 		});
 
 		it("should handle refresh flag", async () => {
-			await actionExecutor.executeGatherContext(samplePR, true);
+			await actionExecutor.executeGatherContext(samplePR);
 
 			expect(mockContextGatherer.gather).toHaveBeenCalled();
 		});
@@ -500,7 +500,7 @@ describe("ActionExecutor", () => {
 				} satisfies ContextEvent;
 			});
 
-			await actionExecutor.executeGatherContext(samplePR, false);
+			await actionExecutor.executeGatherContext(samplePR);
 
 			// Should complete without throwing
 			expect(mockContextGatherer.gather).toHaveBeenCalled();
@@ -515,7 +515,7 @@ describe("ActionExecutor", () => {
 			const consoleError = console.error;
 			console.error = () => {};
 
-			await actionExecutor.executeGatherContext(samplePR, false);
+			await actionExecutor.executeGatherContext(samplePR);
 
 			console.error = consoleError;
 

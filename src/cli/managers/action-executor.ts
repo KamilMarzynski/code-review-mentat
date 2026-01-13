@@ -44,7 +44,7 @@ export class ActionExecutor {
 	 * @param pr - Pull request to gather context for
 	 * @param refresh - Whether to refresh existing context
 	 */
-	async executeGatherContext(pr: PullRequest, refresh: boolean): Promise<void> {
+	async executeGatherContext(pr: PullRequest): Promise<void> {
 		const spinner = ui.spinner();
 		const toolsByType = new Map<string, number>();
 		let hasError = false;

@@ -9,6 +9,7 @@ export type WorkflowAction =
 	| "gather_context" // Available when there is no context yet
 	| "refresh_context" // Available when context exists but outdated
 	| "run_review" // Always available (with warnings if no context)
+	| "review_with_context" // First gather context, then review withtout prompt -> main flow
 	| "handle_pending" // Available when pendingCount > 0
 	| "send_accepted" // Available when acceptedCount > 0
 	| "handle_remote" // Available when hasRemoteComments (future)

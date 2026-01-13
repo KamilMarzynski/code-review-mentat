@@ -86,6 +86,11 @@ export class WorkflowStateManager {
 	getAvailableActions(state: WorkflowState): WorkflowAction[] {
 		const actions: WorkflowAction[] = [];
 
+		// Main flow: Review with context if no context/comments exist
+		if (!state.hasContext && !state.hasComments) {
+			actions.push("review_with_context");
+		}
+
 		// Context gathering - available when no context exists
 		if (!state.hasContext) {
 			actions.push("gather_context");
@@ -131,6 +136,17 @@ export class WorkflowStateManager {
 
 		for (const action of actions) {
 			switch (action) {
+				case "review_with_context":
+					if (!state.hasContext && !state.hasComments) {
+						options.push({
+							value: "review_with_context",
+							label: "Gather deep context and immadiately review code",
+							hint: "Main flow: Get context then review without prompt",
+							recommended: true,
+						});
+					}
+					break;
+
 				case "gather_context":
 					if (!state.hasContext) {
 						options.push({
@@ -209,6 +225,10 @@ export class WorkflowStateManager {
 						label: "✓ Exit",
 						hint: "Save progress and exit",
 					});
+					break;
+				default:
+					// biome-ignore lint/correctness/noSwitchDeclarations: simple exhaustive check
+					const _exhaustiveCheck: never = action;
 					break;
 			}
 		}

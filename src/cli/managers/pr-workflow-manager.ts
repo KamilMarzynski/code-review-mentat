@@ -19,9 +19,6 @@ export class PRWorkflowManager {
 		private ui: UILogger,
 	) {}
 
-	private readonly MAX_DISPLAYED_FILES = 4;
-	private readonly MAX_DISPLAYED_COMMITS = 4;
-
 	public async setProviderForRemote(remote: string): Promise<void> {
 		this.provider = this.createProvider(remote);
 	}
@@ -234,30 +231,6 @@ export class PRWorkflowManager {
 			pr.source.commitHash,
 		);
 
-		if (editedFiles.length > 0) {
-			const displayCount = Math.min(
-				this.MAX_DISPLAYED_FILES,
-				editedFiles.length,
-			);
-			const remaining = editedFiles.length - displayCount;
-
-			this.ui.info(theme.muted("Modified files:"));
-			for (let i = 0; i < displayCount; i++) {
-				const file = editedFiles[i];
-				// Truncate long paths from the middle
-				if (file && file.length > 70) {
-					const parts = file.split("/");
-					const truncated = `.../${parts.slice(-2).join("/")}`;
-					this.ui.log(theme.secondary(`  • ${truncated}`));
-				} else {
-					this.ui.log(theme.secondary(`  • ${file}`));
-				}
-			}
-			if (remaining > 0) {
-				this.ui.log(theme.muted(`  • ...and ${remaining} more file(s)`));
-			}
-		}
-
 		return { fullDiff, editedFiles };
 	}
 
@@ -265,32 +238,8 @@ export class PRWorkflowManager {
 		if (!this.provider) {
 			throw new Error("Git provider not set. Call setProviderForRemote first.");
 		}
-		this.ui.space();
 
 		const commitMessages = await this.provider.fetchCommits(pr);
-
-		if (commitMessages.length > 0) {
-			const displayCount = Math.min(
-				this.MAX_DISPLAYED_COMMITS,
-				commitMessages.length,
-			);
-			const remaining = commitMessages.length - displayCount;
-
-			this.ui.info(theme.muted("Commit history:"));
-			for (let i = 0; i < displayCount; i++) {
-				const commit = commitMessages[i];
-				// Truncate long commit messages
-				if (commit && commit.length > 70) {
-					const truncated = `${commit.substring(0, 67)}...`;
-					this.ui.log(theme.secondary(`  • ${truncated}`));
-				} else {
-					this.ui.log(theme.secondary(`  • ${commit}`));
-				}
-			}
-			if (remaining > 0) {
-				this.ui.log(theme.muted(`  • ...and ${remaining} more commit(s)`));
-			}
-		}
 
 		return commitMessages;
 	}
