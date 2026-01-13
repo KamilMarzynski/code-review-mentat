@@ -1,0 +1,383 @@
+import { beforeEach, describe, expect, it, mock } from "bun:test";
+import type LocalCache from "../../../cache/local-cache";
+import type { GitProvider, PullRequest } from "../../../git-providers/types";
+import type { WorkflowState } from "../../types";
+import { ActionExecutor } from "../action-executor";
+import type { CommentDisplayService } from "../comment-display-service";
+import type { CommentResolutionManager } from "../comment-resolution-manager";
+import type { FixSessionOrchestrator } from "../fix-session-orchestrator";
+import type { PRWorkflowManager } from "../pr-workflow-manager";
+import type { ReviewStreamHandler } from "../review-stream-handler";
+import type { ReviewCommentWithId } from "../../../review/types";
+
+/**
+ * Unit tests for ActionExecutor
+ *
+ * Tests action execution logic with mocked dependencies
+ */
+describe("ActionExecutor", () => {
+	let actionExecutor: ActionExecutor;
+	let mockPRWorkflow: PRWorkflowManager;
+	let mockReviewHandler: ReviewStreamHandler;
+	let mockCommentResolution: CommentResolutionManager;
+	let mockFixSession: FixSessionOrchestrator;
+	let mockCommentDisplay: CommentDisplayService;
+	let mockCache: LocalCache;
+	let mockProvider: GitProvider;
+
+	// Sample pull request for testing
+	const samplePR: PullRequest = {
+		id: 123,
+		title: "Test PR",
+		description: "Test description",
+		source: {
+			name: "feature-branch",
+			commitHash: "abc123def456",
+		},
+		target: {
+			name: "main",
+			commitHash: "def456ghi789",
+		},
+	};
+
+	const sampleState: WorkflowState = {
+		hasContext: true,
+		contextUpToDate: true,
+		hasComments: false,
+		pendingCount: 0,
+		acceptedCount: 0,
+		fixedCount: 0,
+		rejectedCount: 0,
+		hasRemoteComments: false,
+		remoteCommentsCount: 0,
+		currentCommit: "abc123def456",
+		hasNewCommits: false,
+	};
+
+	beforeEach(() => {
+		// Create mock instances
+		mockPRWorkflow = {
+			fetchCommitHistory: mock(async () => ["commit 1", "commit 2"]),
+			analyzeChanges: mock(async () => ({
+				fullDiff: "diff content",
+				editedFiles: ["file1.ts", "file2.ts"],
+			})),
+			postCommentsToRemote: mock(async () => {}),
+		} as unknown as PRWorkflowManager;
+
+		mockReviewHandler = {
+			determineContextStrategy: mock(async () => ({
+				gatherContext: true,
+				refreshCache: false,
+			})),
+			processReviewStream: mock(async () => ({
+				contextHasError: false,
+				reviewHasError: false,
+			})),
+		} as unknown as ReviewStreamHandler;
+
+		mockCommentResolution = {
+			handleComments: mock(async () => {}),
+		} as unknown as CommentResolutionManager;
+
+		mockFixSession = {
+			runFixSession: mock(async () => {}),
+		} as unknown as FixSessionOrchestrator;
+
+		mockCommentDisplay = {
+			displayReviewSummary: mock(() => {}),
+			promptOptionalNotes: mock(async () => undefined),
+			displayCommentWithContext: mock(async () => {}),
+		} as unknown as CommentDisplayService;
+
+		mockCache = {
+			getComments: mock(async () => []),
+		} as unknown as LocalCache;
+
+		mockProvider = {} as GitProvider;
+
+		actionExecutor = new ActionExecutor(
+			mockPRWorkflow,
+			mockReviewHandler,
+			mockCommentResolution,
+			mockFixSession,
+			mockCommentDisplay,
+			mockCache,
+		);
+	});
+
+	describe("executeReview", () => {
+		it("should execute review successfully", async () => {
+			const result = await actionExecutor.executeReview(
+				samplePR,
+				mockProvider,
+				sampleState,
+			);
+
+			expect(mockPRWorkflow.fetchCommitHistory).toHaveBeenCalledWith(samplePR);
+			expect(mockPRWorkflow.analyzeChanges).toHaveBeenCalledWith(samplePR);
+			expect(mockReviewHandler.determineContextStrategy).toHaveBeenCalledWith(
+				samplePR,
+			);
+			expect(mockReviewHandler.processReviewStream).toHaveBeenCalled();
+			expect(result.hasErrors).toBe(false);
+			expect(result.commentsCreated).toBe(0);
+		});
+
+		it("should return comments created during review", async () => {
+			mockCache.getComments = mock(
+				async () =>
+					[
+						{
+							id: "1",
+							file: "test.ts",
+							message: "Test comment",
+							status: "pending",
+						},
+						{
+							id: "2",
+							file: "test.ts",
+							message: "Test comment 2",
+							status: "pending",
+						},
+					] satisfies ReviewCommentWithId[],
+			);
+
+			const result = await actionExecutor.executeReview(
+				samplePR,
+				mockProvider,
+				sampleState,
+			);
+
+			expect(result.commentsCreated).toBe(2);
+			expect(result.hasErrors).toBe(false);
+		});
+
+		it("should handle review errors", async () => {
+			mockReviewHandler.processReviewStream = mock(async () => ({
+				contextHasError: false,
+				reviewHasError: true,
+			}));
+
+			const result = await actionExecutor.executeReview(
+				samplePR,
+				mockProvider,
+				sampleState,
+			);
+
+			expect(result.hasErrors).toBe(true);
+		});
+
+		it("should handle context errors", async () => {
+			mockReviewHandler.processReviewStream = mock(async () => ({
+				contextHasError: true,
+				reviewHasError: false,
+			}));
+
+			const result = await actionExecutor.executeReview(
+				samplePR,
+				mockProvider,
+				sampleState,
+			);
+
+			expect(result.hasErrors).toBe(true);
+		});
+
+		it("should display review summary when comments exist", async () => {
+			mockCache.getComments = mock(
+				async () =>
+					[
+						{
+							id: "1",
+							file: "test.ts",
+							message: "Test",
+							status: "pending",
+						},
+					] satisfies ReviewCommentWithId[],
+			);
+
+			await actionExecutor.executeReview(samplePR, mockProvider, sampleState);
+
+			expect(mockCommentDisplay.displayReviewSummary).toHaveBeenCalled();
+		});
+
+		it("should handle exceptions gracefully", async () => {
+			mockPRWorkflow.fetchCommitHistory = mock(async () => {
+				throw new Error("Network error");
+			});
+
+			const result = await actionExecutor.executeReview(
+				samplePR,
+				mockProvider,
+				sampleState,
+			);
+
+			expect(result.hasErrors).toBe(true);
+			expect(result.commentsCreated).toBe(0);
+		});
+	});
+
+	describe("executeHandlePending", () => {
+		it("should execute comment handling successfully", async () => {
+			const result = await actionExecutor.executeHandlePending(samplePR);
+
+			expect(mockCommentResolution.handleComments).toHaveBeenCalled();
+			expect(result.processed).toBeGreaterThanOrEqual(0);
+		});
+
+		it("should track comment resolution summary", async () => {
+			let callbackFn: (
+				comment: {
+					filePath: string;
+					lineNumber: number;
+					suggestion: string;
+				},
+				prKey: string,
+				summary: {
+					accepted: number;
+					fixed: number;
+					rejected: number;
+					skipped: number;
+				},
+			) => Promise<void>;
+
+			mockCommentResolution.handleComments = mock(async (_prKey, callback) => {
+				callbackFn = callback;
+			});
+
+			// Mock runFixSession to mutate the interimSummary object
+			mockFixSession.runFixSession = mock(
+				async (_comment, _prKey, _notes, summary) => {
+					if (summary) {
+						summary.fixed = 1;
+						summary.accepted = 2;
+						summary.rejected = 1;
+						summary.skipped = 0;
+					}
+				},
+			);
+
+			const resultPromise = actionExecutor.executeHandlePending(samplePR);
+
+			// Simulate callback being called
+			await new Promise((resolve) => setTimeout(resolve, 10));
+
+			// biome-ignore lint/style/noNonNullAssertion: Test requires callback to be set
+			if (callbackFn!) {
+				const summary = { accepted: 0, fixed: 0, rejected: 0, skipped: 0 };
+				await callbackFn(
+					{
+						filePath: "test.ts",
+						lineNumber: 10,
+						suggestion: "Fix suggestion",
+					},
+					"test-pr-key",
+					summary,
+				);
+			}
+
+			const result = await resultPromise;
+
+			expect(result.fixed).toBe(1);
+			expect(result.accepted).toBe(2);
+			expect(result.rejected).toBe(1);
+			expect(result.processed).toBe(4);
+		});
+
+		it("should handle exceptions gracefully", async () => {
+			mockCommentResolution.handleComments = mock(async () => {
+				throw new Error("Handling error");
+			});
+
+			const result = await actionExecutor.executeHandlePending(samplePR);
+
+			expect(result.processed).toBe(0);
+			expect(result.fixed).toBe(0);
+		});
+	});
+
+	describe("executeSendAccepted", () => {
+		it("should send accepted comments successfully", async () => {
+			mockCache.getComments = mock(
+				async () =>
+					[
+						{
+							id: "1",
+							file: "test.ts",
+							message: "Test",
+							status: "accepted",
+						},
+						{
+							id: "2",
+							file: "test.ts",
+							message: "Test 2",
+							status: "accepted",
+						},
+					] satisfies ReviewCommentWithId[],
+			);
+
+			const count = await actionExecutor.executeSendAccepted(
+				samplePR,
+				mockProvider,
+			);
+
+			expect(count).toBe(2);
+			expect(mockPRWorkflow.postCommentsToRemote).toHaveBeenCalled();
+		});
+
+		it("should return 0 when no accepted comments exist", async () => {
+			mockCache.getComments = mock(
+				async () =>
+					[
+						{
+							id: "1",
+							file: "test.ts",
+							message: "Test",
+							status: "pending",
+						},
+					] satisfies ReviewCommentWithId[],
+			);
+
+			const count = await actionExecutor.executeSendAccepted(
+				samplePR,
+				mockProvider,
+			);
+
+			expect(count).toBe(0);
+			expect(mockPRWorkflow.postCommentsToRemote).not.toHaveBeenCalled();
+		});
+
+		it("should handle exceptions gracefully", async () => {
+			mockCache.getComments = mock(
+				async () =>
+					[
+						{
+							id: "1",
+							file: "test.ts",
+							message: "Test",
+							status: "accepted",
+						},
+					] satisfies ReviewCommentWithId[],
+			);
+
+			mockPRWorkflow.postCommentsToRemote = mock(async () => {
+				throw new Error("Network error");
+			});
+
+			const count = await actionExecutor.executeSendAccepted(
+				samplePR,
+				mockProvider,
+			);
+
+			expect(count).toBe(0);
+		});
+	});
+
+	describe("executeGatherContext", () => {
+		it("should execute context gathering", async () => {
+			await actionExecutor.executeGatherContext(samplePR, false);
+			// Context gathering is currently a placeholder
+			// This test ensures the method exists and can be called
+		});
+	});
+});

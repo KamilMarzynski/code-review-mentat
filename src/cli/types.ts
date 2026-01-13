@@ -58,3 +58,22 @@ export interface MenuOption {
 	requiresContext?: boolean; // For warnings
 	warningHint?: string; // Special warning to display
 }
+
+/**
+ * Result from executing a review action
+ */
+export interface ReviewResult {
+	commentsCreated: number;
+	hasErrors: boolean;
+}
+
+/**
+ * Result from handling pending comments
+ */
+export interface HandleCommentsResult {
+	processed: number;
+	fixed: number;
+	accepted: number;
+	rejected: number;
+	skipped: number;
+}
