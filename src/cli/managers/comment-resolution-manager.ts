@@ -165,65 +165,117 @@ export class CommentResolutionManager {
 			);
 			this.ui.space();
 
-			// Display comment with context
-			await displayCommentFn(comment);
+			// Loop until we get a non-create_memory action
+			// (allows user to create memory, then decide what to do with the comment)
+			let shouldContinue = true;
+			let hideCreateMemory = comment.memoryCreated === true;
 
-			this.ui.space();
+			while (shouldContinue) {
+				// Display comment with context
+				await displayCommentFn(comment);
+				this.ui.space();
 
-			// Get user decision
-			const action = await promptCommentAction();
+				// Get user decision (hide create_memory if already created)
+				const action = await promptCommentAction(hideCreateMemory);
 
-			if (action === null) {
-				this.ui.cancel("Comment resolution cancelled");
-				break;
-			}
-
-			// Handle user action
-			switch (action) {
-				case "fix": {
-					await onFixRequested(comment, prKey, summary);
+				if (action === null) {
+					this.ui.cancel("Comment resolution cancelled");
+					shouldContinue = false;
 					break;
 				}
 
-				case "accept":
-					await this.cache.updateComment(prKey, comment.id, {
-						status: "accepted",
-					});
-					summary.accepted++;
-					this.ui.success(theme.success("✓ Comment accepted"));
-					break;
+				// Handle user action
+				switch (action) {
+					case "create_memory": {
+						this.ui.info(theme.accent("Creating memory from comment..."));
 
-				case "reject": {
-					await this.cache.updateComment(prKey, comment.id, {
-						status: "rejected",
-					});
+						// TODO: Implement actual MCP memory creation here
+						// Example:
+						// await mcpClient.createEntity({
+						//   entityType: "code_review_pattern",
+						//   name: `Review: ${comment.file}`,
+						//   observations: [comment.message, comment.rationale]
+						// });
 
-					summary.rejected++;
-					this.ui.logStep(theme.muted("✗ Comment rejected"));
-					break;
-				}
+						this.ui.warn(
+							theme.warning(
+								"⚠️ MCP memory integration not yet implemented - placeholder only",
+							),
+						);
 
-				case "skip":
-					summary.skipped++;
-					this.ui.logStep(theme.muted("⏭ Comment skipped"));
-					break;
+						// Mark that memory was created for this comment
+						await this.cache.updateComment(prKey, comment.id, {
+							memoryCreated: true,
+						});
 
-				case "quit":
-					this.ui.info(theme.secondary("Exiting comment resolution..."));
+						this.ui.success(theme.success("✓ Memory created (and cached)"));
 
-					if (summary.fixed + summary.accepted + summary.rejected > 0) {
-						console.log("");
-						this.displayResolutionSummary(summary);
+						// Loop back: re-display comment and prompt again (without create_memory option)
+						this.ui.space();
+						this.ui.info(
+							theme.secondary("Now decide what to do with this comment:"),
+						);
+						this.ui.space();
+
+						// Hide create_memory option on next iteration
+						hideCreateMemory = true;
+						// Continue the while loop to re-prompt
+						break;
 					}
 
-					this.ui.sectionComplete("Comment resolution paused");
-					return {
-						processed: summary.fixed + summary.accepted + summary.rejected,
-						fixed: summary.fixed,
-						accepted: summary.accepted,
-						rejected: summary.rejected,
-						skipped: summary.skipped,
-					};
+					case "fix": {
+						await onFixRequested(comment, prKey, summary);
+						shouldContinue = false;
+						break;
+					}
+
+					case "accept":
+						await this.cache.updateComment(prKey, comment.id, {
+							status: "accepted",
+						});
+						summary.accepted++;
+						this.ui.success(theme.success("✓ Comment accepted"));
+						shouldContinue = false;
+						break;
+
+					case "reject": {
+						await this.cache.updateComment(prKey, comment.id, {
+							status: "rejected",
+						});
+						summary.rejected++;
+						this.ui.logStep(theme.muted("✗ Comment rejected"));
+						shouldContinue = false;
+						break;
+					}
+
+					case "skip":
+						summary.skipped++;
+						this.ui.logStep(theme.muted("⏭ Comment skipped"));
+						shouldContinue = false;
+						break;
+
+					case "quit":
+						this.ui.info(theme.secondary("Exiting comment resolution..."));
+
+						if (summary.fixed + summary.accepted + summary.rejected > 0) {
+							console.log("");
+							this.displayResolutionSummary(summary);
+						}
+
+						this.ui.sectionComplete("Comment resolution paused");
+						return {
+							processed: summary.fixed + summary.accepted + summary.rejected,
+							fixed: summary.fixed,
+							accepted: summary.accepted,
+							rejected: summary.rejected,
+							skipped: summary.skipped,
+						};
+				}
+
+				if (!shouldContinue && action === null) {
+					// If user cancelled, break out of loop
+					break;
+				}
 			}
 		}
 
