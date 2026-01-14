@@ -190,17 +190,16 @@ src/
 
 ### Core Features
 
-- [ ] Post review comments directly to remote pull requests
+- [x] Post review comments directly to remote pull requests
 - [ ] Help address reviewer feedback on your pull requests
 - [x] Automatic issue fixing based on review findings
-- [ ] Interactive code cleanup workflows
+- [x] Interactive code cleanup workflows
 
 ### Platform & Integration
 
 - [ ] Support for GitHub and GitHub Enterprise
 - [ ] Support for GitLab
 - [ ] Configuration file support (replacing environment variables)
-- [ ] CI/CD integration and hooks
 
 ### Enhancements
 
@@ -221,5 +220,4 @@ Built with:
 - [Bun](https://bun.sh) - Fast JavaScript runtime
 - [Claude AI](https://www.anthropic.com) - AI-powered code analysis
 - [LangChain](https://www.langchain.com) - AI framework
-- [LangGraph](https://langchain-ai.github.io/langgraph/) - Multi-agent workflow orchestration
 - [@clack/prompts](https://github.com/natemoo-re/clack) - Beautiful CLI prompts
