@@ -1,6 +1,5 @@
 import * as clack from "@clack/prompts";
 import type { RemoteWithRefs } from "simple-git";
-import type { CachedContext } from "../cache/local-cache";
 import type { PullRequest } from "../git-providers/types";
 import { theme } from "../ui/theme";
 import type { MenuOption, WorkflowAction } from "./types";
@@ -45,112 +44,6 @@ export async function promptForPR(prs: PullRequest[]): Promise<PullRequest> {
 	return pickedPr as PullRequest;
 }
 
-export async function promptForCacheStrategy(
-	hasCached: boolean,
-	meta?: CachedContext["meta"],
-	currentHash?: string,
-): Promise<{ gatherContext: boolean; refreshCache: boolean }> {
-	let gatherContext = true;
-	let refreshCache = false;
-
-	if (hasCached) {
-		const commitChanged = meta?.gatheredFromCommit !== currentHash;
-
-		if (meta && !commitChanged) {
-			clack.log.success(
-				theme.success("Deep context already synthesized. ") +
-					theme.muted(
-						`(computed ${new Date(meta.gatheredAt).toLocaleString()})`,
-					),
-			);
-			// Use cached context, no need to gather again
-			gatherContext = false;
-		} else {
-			clack.log.warn(
-				`${theme.warning("⚡ Pattern shift detected in pull request")}\n${theme.muted(`   Previous: ${meta?.gatheredFromCommit?.substring(0, 8)}`)}\n${theme.muted(`   Current:  ${currentHash?.substring(0, 8)}`)}`,
-			);
-
-			const choice = await clack.select({
-				message: theme.accent("How shall the Mentat proceed?"),
-				options: [
-					{
-						value: "use",
-						label: theme.success("⚡ Use existing computation"),
-						hint: "Instant analysis (no API calls)",
-					},
-					{
-						value: "refresh",
-						label: theme.warning("🔄 Recompute data synthesis"),
-						hint: "Fresh data synthesis from Jira/Confluence (costs credits)",
-					},
-					{
-						value: "skip",
-						label: theme.muted("⏭  Skip context synthesis"),
-						hint: "Code analysis only, no external data",
-					},
-				],
-			});
-
-			if (clack.isCancel(choice)) {
-				clack.cancel(theme.error("Mentat computation interrupted."));
-				process.exit(0);
-			}
-
-			if (choice === "refresh") {
-				refreshCache = true;
-			} else if (choice === "skip") {
-				gatherContext = false;
-			}
-		}
-	} else {
-		const shouldGather = await clack.confirm({
-			message: theme.accent(
-				"Synthesize deep context from Jira and Confluence?",
-			),
-			initialValue: true,
-		});
-
-		if (clack.isCancel(shouldGather)) {
-			clack.cancel(theme.error("Mentat computation interrupted."));
-			process.exit(0);
-		}
-
-		gatherContext = Boolean(shouldGather);
-	}
-
-	return { gatherContext, refreshCache };
-}
-
-export async function promptForPendingCommentsAction(
-	pendingCount: number,
-	hasNewCommits: boolean,
-): Promise<"handle_comments" | "review"> {
-	const action = await clack.select({
-		message: "What would you like to do?",
-		options: [
-			{
-				value: "handle_comments",
-				label: "🔧 Handle pending comments",
-				hint: `Review and resolve ${pendingCount} pending comment(s)`,
-			},
-			{
-				value: "review",
-				label: "🔄 Run new review",
-				hint: hasNewCommits
-					? "Recommended: New commits detected"
-					: "Perform fresh review (you'll choose context strategy next)",
-			},
-		],
-	});
-
-	if (clack.isCancel(action)) {
-		clack.cancel("Operation cancelled");
-		process.exit(0);
-	}
-
-	return action as "handle_comments" | "review";
-}
-
 export async function promptToResolveComments(): Promise<boolean> {
 	const shouldResolve = await clack.confirm({
 		message: "Would you like to review and resolve these comments now?",
@@ -174,19 +67,6 @@ export async function promptToSendCommentsToRemote(): Promise<boolean> {
 		return false;
 	}
 	return Boolean(shouldSend);
-}
-
-export async function promptContinueWithAllResolved(): Promise<boolean> {
-	const shouldContinue = await clack.confirm({
-		message: "Run a new review?",
-		initialValue: false,
-	});
-
-	if (clack.isCancel(shouldContinue)) {
-		return false;
-	}
-
-	return Boolean(shouldContinue);
 }
 
 export async function promptCommentAction(): Promise<
