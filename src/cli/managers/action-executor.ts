@@ -2,6 +2,7 @@ import type LocalCache from "../../cache/local-cache";
 import { getPRKey, type PullRequest } from "../../git-providers/types";
 import type { CodeReviewer } from "../../review/code-reviewer";
 import type { ContextGatherer } from "../../review/context-gatherer";
+import type { ContextGathererFactory } from "../../review/context-gatherer-factory";
 import type { ContextEvent, ReviewEvent } from "../../review/types";
 import { ui } from "../../ui/logger";
 import { theme } from "../../ui/theme";
@@ -28,12 +29,14 @@ import type { PRWorkflowManager } from "./pr-workflow-manager";
  * for use by the orchestrator or post-action handlers.
  */
 export class ActionExecutor {
+	private contextGatherer: ContextGatherer | null = null;
+
 	constructor(
 		private prWorkflow: PRWorkflowManager,
 		private commentResolution: CommentResolutionManager,
 		private fixSession: FixSessionOrchestrator,
 		private commentDisplay: CommentDisplayService,
-		private contextGatherer: ContextGatherer,
+		private contextGathererFactory: ContextGathererFactory,
 		private codeReviewer: CodeReviewer,
 		private cache: LocalCache,
 	) {}
@@ -45,6 +48,11 @@ export class ActionExecutor {
 	 * @param refresh - Whether to refresh existing context
 	 */
 	async executeGatherContext(pr: PullRequest): Promise<void> {
+		// Lazy initialization of context gatherer
+		if (!this.contextGatherer) {
+			this.contextGatherer = await this.contextGathererFactory.create();
+		}
+
 		const spinner = ui.spinner();
 		const toolsByType = new Map<string, number>();
 		let hasError = false;

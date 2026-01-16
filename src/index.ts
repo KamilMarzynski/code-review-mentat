@@ -1,5 +1,4 @@
 import { ChatAnthropic } from "@langchain/anthropic";
-import { createAgent } from "langchain";
 import LocalCache from "./cache/local-cache";
 import { ActionExecutor } from "./cli/managers/action-executor";
 import { CommentDisplayService } from "./cli/managers/comment-display-service";
@@ -10,11 +9,11 @@ import { PRWorkflowManager } from "./cli/managers/pr-workflow-manager";
 import { WorkflowStateManager } from "./cli/managers/workflow-state-manager";
 import { CLIOrchestrator } from "./cli/orchestrator";
 import GitOperations from "./git/operations";
-import BitbucketServerGitProvider from "./git-providers/bitbucket";
+import { GitProviderFactory } from "./git-providers/factory";
 import { createMCPClient, getMCPTools } from "./mcp/client";
 import { CodeReviewer } from "./review/code-reviewer";
 import { CommentFixer } from "./review/comment-fixer";
-import { ContextGatherer } from "./review/context-gatherer";
+import { ContextGathererFactory } from "./review/context-gatherer-factory";
 import { UILogger } from "./ui/logger";
 
 const { PATH_TO_CLAUDE } = process.env;
@@ -74,48 +73,20 @@ const main = async () => {
 	// ============================================================================
 	// Service Layer
 	// ============================================================================
-	// Factory function to lazily create context gatherer when needed
-	const createContextGatherer = async () => {
-		const { tools } = await mcpInitPromise;
-		const contextGathererAgent = createAgent({
-			model,
-			tools,
-			systemPrompt: `You are a code review context specialist.
-
-## Your Goal
-Gather ONLY information that will help an AI perform code review. Focus on:
-1. Business requirements from Jira tickets
-2. Technical specifications from Confluence
-3. Related architectural decisions
-
-## Process
-1. Extract ticket references from PR title, description, and commits (e.g., PROJ-123)
-2. Fetch each ticket and summarize acceptance criteria
-3. Search Confluence for related technical documentation
-4. Synthesize findings into actionable context
-
-## Output Format
-Provide a structured summary:
-- **Requirements**: What the PR should accomplish
-- **Technical Context**: Relevant architecture/patterns
-- **Edge Cases**: Known constraints or special handling
-
-## Constraints
-- Skip information already in the PR description
-- Focus on REQUIREMENTS, not implementation details`,
-		});
-		return new ContextGatherer(contextGathererAgent);
-	};
-
 	// Initialize review services
 	const codeReviewer = new CodeReviewer(PATH_TO_CLAUDE);
 	const commentFixer = new CommentFixer(PATH_TO_CLAUDE);
 
-	// Provider factory function
-	const createProvider = (remote: string) =>
-		new BitbucketServerGitProvider(remote);
+	// Create factory for lazy initialization of context gatherer
+	const contextGathererFactory = new ContextGathererFactory(model, async () => {
+		const { tools } = await mcpInitPromise;
+		return tools;
+	});
 
-	const prWorkflow = new PRWorkflowManager(git, createProvider, ui);
+	// Create git provider factory
+	const gitProviderFactory = new GitProviderFactory();
+
+	const prWorkflow = new PRWorkflowManager(git, gitProviderFactory, ui);
 	const commentResolution = new CommentResolutionManager(cache, ui);
 
 	const fixSession = new FixSessionOrchestrator(commentFixer, git, cache, ui);
@@ -130,13 +101,12 @@ Provide a structured summary:
 	// - PostActionHandler: Provides smart flow transitions after actions
 	// ============================================================================
 	const stateManager = new WorkflowStateManager(cache);
-	const contextGatherer = await createContextGatherer();
 	const actionExecutor = new ActionExecutor(
 		prWorkflow,
 		commentResolution,
 		fixSession,
 		commentDisplay,
-		contextGatherer,
+		contextGathererFactory,
 		codeReviewer,
 		cache,
 	);

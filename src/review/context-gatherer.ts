@@ -1,3 +1,4 @@
+import type { ChatAnthropic } from "@langchain/anthropic";
 import {
 	AIMessage,
 	type BaseMessage,
@@ -6,7 +7,8 @@ import {
 	ToolMessage,
 } from "@langchain/core/messages";
 
-import type { ReactAgent } from "langchain";
+import type { ClientTool, ServerTool } from "@langchain/core/tools";
+import { createAgent, type ReactAgent } from "langchain";
 import type {
 	ContextEvent,
 	ContextGatherInput,
@@ -14,6 +16,51 @@ import type {
 } from "./types";
 
 export class ContextGatherer {
+	private static readonly SYSTEM_PROMPT =
+		`You are a code review context specialist.
+
+## Your Goal
+Gather ONLY information that will help an AI perform code review. Focus on:
+1. Business requirements from Jira tickets
+2. Technical specifications from Confluence
+3. Related architectural decisions
+
+## Process
+1. Extract ticket references from PR title, description, and commits (e.g., PROJ-123)
+2. Fetch each ticket and summarize acceptance criteria
+3. Search Confluence for related technical documentation
+4. Synthesize findings into actionable context
+
+## Output Format
+Provide a structured summary:
+- **Requirements**: What the PR should accomplish
+- **Technical Context**: Relevant architecture/patterns
+- **Edge Cases**: Known constraints or special handling
+
+## Constraints
+- Skip information already in the PR description
+- Focus on REQUIREMENTS, not implementation details`;
+
+	/**
+	 * Factory method that creates a {@link ContextGatherer} backed by a LangChain React agent
+	 * configured with the built-in system prompt.
+	 *
+	 * @param model - The Anthropic chat model used by the agent to reason about and synthesize context.
+	 * @param tools - The set of LangChain tools (server or client) that the agent may call while gathering context.
+	 * @returns A configured {@link ContextGatherer} instance ready to gather review context.
+	 */
+	static create(
+		model: ChatAnthropic,
+		tools: (ServerTool | ClientTool)[],
+	): ContextGatherer {
+		const agent = createAgent({
+			model,
+			tools,
+			systemPrompt: ContextGatherer.SYSTEM_PROMPT,
+		});
+		return new ContextGatherer(agent);
+	}
+
 	constructor(private agent: ReactAgent) {}
 
 	public async *gather(
