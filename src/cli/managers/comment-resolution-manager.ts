@@ -5,11 +5,11 @@ import type {
 	ReviewCommentStatus,
 	StoredReviewComment,
 } from "../../review/types";
+import type { CodeContextReader } from "../../ui/code-context-reader";
 import type { UILogger } from "../../ui/logger";
 import { theme } from "../../ui/theme";
 import { promptCommentAction } from "../cli-prompts";
 import type { HandleCommentsResult } from "../types";
-import type { CodeContextReader } from "../../ui/code-context-reader";
 
 /**
  * Manages comment resolution workflow

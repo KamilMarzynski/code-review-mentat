@@ -39,6 +39,7 @@ Provide a structured summary:
 
 ## Constraints
 - Skip information already in the PR description
+- Keep tool calls concise and relevant - maximum 10 calls
 - Focus on REQUIREMENTS, not implementation details`;
 
 	/**
@@ -144,14 +145,17 @@ Edited Files: ${input.editedFiles.join(", ")}`);
 	> {
 		const allMessages: BaseMessage[] = [message];
 
-		const stream = await this.agent.stream({
-			messages: allMessages,
-		});
+		const stream = await this.agent.stream(
+			{
+				messages: allMessages,
+			},
+			{ streamMode: "updates" },
+		);
 
 		for await (const chunk of stream) {
-			if (chunk.messages && Array.isArray(chunk.messages)) {
-				const message = chunk.messages[chunk.messages.length - 1];
-				// console.debug("Received message from agent stream:", message);
+			const [_, content] = Object.entries(chunk)[0] as any;
+			if (content.messages && Array.isArray(content.messages)) {
+				const message = content.messages[content.messages.length - 1];
 				if (this.isAIMessageType(message)) {
 					yield* this.handleAIMessage(message);
 				}

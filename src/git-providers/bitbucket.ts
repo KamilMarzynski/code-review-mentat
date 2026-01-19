@@ -94,10 +94,6 @@ export default class BitbucketServerGitProvider implements GitProvider {
 		pr: PullRequest,
 		comment: CreatePullRequestCommentRequest,
 	): Promise<CreatedPrComment> {
-		console.log(
-			"Creating Bitbucket Server PR comment...",
-			JSON.stringify(comment, null, 2),
-		);
 		if (!BB_TOKEN) {
 			throw new Error("BB_TOKEN is not set");
 		}

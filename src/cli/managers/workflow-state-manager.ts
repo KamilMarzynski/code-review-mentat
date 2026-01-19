@@ -169,6 +169,15 @@ export class WorkflowStateManager {
 					}
 					break;
 
+				case "handle_pending":
+					options.push({
+						value: "handle_pending",
+						label: `🔧 Handle ${state.pendingCount} Pending Comment${state.pendingCount !== 1 ? "s" : ""}`,
+						hint: "Review and resolve comments (fix, accept, or reject)",
+						recommended: state.pendingCount > 0,
+					});
+					break;
+
 				case "run_review": {
 					const hasWarning = !state.hasContext;
 					options.push({
@@ -188,15 +197,6 @@ export class WorkflowStateManager {
 					});
 					break;
 				}
-
-				case "handle_pending":
-					options.push({
-						value: "handle_pending",
-						label: `🔧 Handle ${state.pendingCount} Pending Comment${state.pendingCount !== 1 ? "s" : ""}`,
-						hint: "Review and resolve comments (fix, accept, or reject)",
-						recommended: state.pendingCount > 0,
-					});
-					break;
 
 				case "send_accepted":
 					options.push({

@@ -87,7 +87,9 @@ export class ActionExecutor {
 
 					switch (contextEvent.type) {
 						case "context_tool_call": {
-							if (hasError) break;
+							if (hasError) {
+								break;
+							}
 
 							const count = toolsByType.get(contextEvent.toolName) || 0;
 							toolsByType.set(contextEvent.toolName, count + 1);

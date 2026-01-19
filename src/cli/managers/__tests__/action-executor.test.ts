@@ -3,6 +3,7 @@ import type LocalCache from "../../../cache/local-cache";
 import type { PullRequest } from "../../../git-providers/types";
 import type { CodeReviewer } from "../../../review/code-reviewer";
 import type { ContextGatherer } from "../../../review/context-gatherer";
+import type { ContextGathererFactory } from "../../../review/context-gatherer-factory";
 import type {
 	ContextEvent,
 	ReviewEvent,
@@ -14,7 +15,6 @@ import type { CommentDisplayService } from "../comment-display-service";
 import type { CommentResolutionManager } from "../comment-resolution-manager";
 import type { FixSessionOrchestrator } from "../fix-session-orchestrator";
 import type { PRWorkflowManager } from "../pr-workflow-manager";
-import type { ContextGathererFactory } from "../../../review/context-gatherer-factory";
 
 // Mock UI logger
 const mockSpinner = {
@@ -47,7 +47,7 @@ describe("ActionExecutor", () => {
 	let mockCommentResolution: CommentResolutionManager;
 	let mockFixSession: FixSessionOrchestrator;
 	let mockCommentDisplay: CommentDisplayService;
-  let mockContextGatherer: ContextGatherer;
+	let mockContextGatherer: ContextGatherer;
 	let mockContextGathererFactory: ContextGathererFactory;
 	let mockCodeReviewer: CodeReviewer;
 	let mockCache: LocalCache;
@@ -116,7 +116,7 @@ describe("ActionExecutor", () => {
 			displayCommentWithContext: mock(async () => {}),
 		} as unknown as CommentDisplayService;
 
-    mockContextGatherer = {
+		mockContextGatherer = {
 			gather: mock(async function* () {
 				yield {
 					type: "context_start",
@@ -141,7 +141,7 @@ describe("ActionExecutor", () => {
 		} as unknown as ContextGatherer;
 
 		mockContextGathererFactory = {
-      create: mock(() => mockContextGatherer), 
+			create: mock(() => mockContextGatherer),
 		} as unknown as ContextGathererFactory;
 
 		mockCodeReviewer = {

@@ -14,8 +14,8 @@ import { createMCPClient, getMCPTools } from "./mcp/client";
 import { CodeReviewer } from "./review/code-reviewer";
 import { CommentFixer } from "./review/comment-fixer";
 import { ContextGathererFactory } from "./review/context-gatherer-factory";
-import { UILogger } from "./ui/logger";
 import { CodeContextReader } from "./ui/code-context-reader";
+import { UILogger } from "./ui/logger";
 
 const { PATH_TO_CLAUDE } = process.env;
 if (!PATH_TO_CLAUDE) {
