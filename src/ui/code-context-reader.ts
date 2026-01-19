@@ -1,6 +1,4 @@
-import { exec } from "node:child_process";
 import { readFile } from "node:fs/promises";
-import { promisify } from "node:util";
 
 /**
  * Handles reading code context from files and git
@@ -77,19 +75,6 @@ export class CodeContextReader {
 			return { lines: result, success: true };
 		} catch (_error) {
 			return { lines: [], success: false };
-		}
-	}
-
-	/**
-	 * Get full diff from git
-	 */
-	async getFullDiff(base = "HEAD~1"): Promise<string> {
-		try {
-			const execAsync = promisify(exec);
-			const { stdout } = await execAsync(`git diff ${base}`);
-			return stdout;
-		} catch (_error) {
-			return "";
 		}
 	}
 }

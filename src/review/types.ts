@@ -21,8 +21,9 @@ export type ReviewComment = {
 	memoryCreated?: boolean; // Track if memory was created for this comment
 };
 
-export type ReviewCommentWithId = ReviewComment & {
+export type StoredReviewComment = ReviewComment & {
 	id: string;
+	codeSnippet?: string; // Code snippet related to the comment
 };
 
 export type FixIteration = {

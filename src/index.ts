@@ -15,6 +15,7 @@ import { CodeReviewer } from "./review/code-reviewer";
 import { CommentFixer } from "./review/comment-fixer";
 import { ContextGathererFactory } from "./review/context-gatherer-factory";
 import { UILogger } from "./ui/logger";
+import { CodeContextReader } from "./ui/code-context-reader";
 
 const { PATH_TO_CLAUDE } = process.env;
 if (!PATH_TO_CLAUDE) {
@@ -63,6 +64,7 @@ const main = async () => {
 	const git = new GitOperations();
 	const cache = new LocalCache();
 	const ui = new UILogger();
+	const codeContextReader = new CodeContextReader();
 
 	// Initialize LangChain model
 	const model = new ChatAnthropic({
@@ -87,7 +89,11 @@ const main = async () => {
 	const gitProviderFactory = new GitProviderFactory();
 
 	const prWorkflow = new PRWorkflowManager(git, gitProviderFactory, ui);
-	const commentResolution = new CommentResolutionManager(cache, ui);
+	const commentResolution = new CommentResolutionManager(
+		codeContextReader,
+		cache,
+		ui,
+	);
 
 	const fixSession = new FixSessionOrchestrator(commentFixer, git, cache, ui);
 	const commentDisplay = new CommentDisplayService(ui);

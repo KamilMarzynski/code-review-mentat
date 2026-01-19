@@ -3,12 +3,13 @@ import type LocalCache from "../../cache/local-cache";
 import type {
 	ReviewComment,
 	ReviewCommentStatus,
-	ReviewCommentWithId,
+	StoredReviewComment,
 } from "../../review/types";
 import type { UILogger } from "../../ui/logger";
 import { theme } from "../../ui/theme";
 import { promptCommentAction } from "../cli-prompts";
 import type { HandleCommentsResult } from "../types";
+import type { CodeContextReader } from "../../ui/code-context-reader";
 
 /**
  * Manages comment resolution workflow
@@ -20,6 +21,7 @@ import type { HandleCommentsResult } from "../types";
  */
 export class CommentResolutionManager {
 	constructor(
+		private codeContextReader: CodeContextReader,
 		private cache: LocalCache,
 		private ui: UILogger,
 	) {}
@@ -34,7 +36,7 @@ export class CommentResolutionManager {
 		accepted: number;
 		fixed: number;
 		rejected: number;
-		comments: ReviewCommentWithId[];
+		comments: StoredReviewComment[];
 	}> {
 		const comments = await this.cache.getComments(prKey);
 
@@ -55,7 +57,7 @@ export class CommentResolutionManager {
 	 */
 	public async getPendingComments(
 		prKey: string,
-	): Promise<ReviewCommentWithId[]> {
+	): Promise<StoredReviewComment[]> {
 		const comments = await this.cache.getComments(prKey);
 		return comments.filter((c) => c.status === "pending" || !c.status);
 	}
@@ -66,7 +68,7 @@ export class CommentResolutionManager {
 	 */
 	public async getAcceptedComments(
 		prKey: string,
-	): Promise<ReviewCommentWithId[]> {
+	): Promise<StoredReviewComment[]> {
 		const comments = await this.cache.getComments(prKey);
 		return comments.filter((c) => c.status === "accepted");
 	}
@@ -329,13 +331,42 @@ export class CommentResolutionManager {
 	public async saveCommentsToCache(
 		comments: ReviewComment[],
 		prKey: string,
-	): Promise<ReviewCommentWithId[]> {
-		// Add IDs to comments if missing
-		const commentsWithIds = comments.map((c) => ({
-			...c,
-			id: c.id || randomUUID(),
-			status: c.status || ("pending" as ReviewCommentStatus),
-		}));
+	): Promise<StoredReviewComment[]> {
+		// Add IDs to comments if missing and fetch code snippets
+		const commentsWithIds = await Promise.all(
+			comments.map(async (c) => {
+				let codeSnippet = "";
+				if (c.startLine !== undefined && c.endLine !== undefined) {
+					const fileRange = await this.codeContextReader.readFileRange(
+						c.file,
+						c.startLine,
+						c.endLine,
+					);
+					if (fileRange.success) {
+						codeSnippet = fileRange.lines
+							.map((line) => line.content)
+							.join("\n");
+					}
+				} else if (c.line !== undefined) {
+					const fileLines = await this.codeContextReader.readFileLines(
+						c.file,
+						c.line,
+					);
+					if (fileLines.success) {
+						codeSnippet = fileLines.lines
+							.map((line) => line.content)
+							.join("\n");
+					}
+				}
+
+				return {
+					...c,
+					id: c.id || randomUUID(),
+					status: c.status || ("pending" as ReviewCommentStatus),
+					codeSnippet,
+				};
+			}),
+		);
 
 		// Check if we already have comments cached
 		const existingComments = await this.cache.getComments(prKey);

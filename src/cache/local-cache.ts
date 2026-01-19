@@ -10,7 +10,7 @@ import {
 } from "node:fs";
 import { join } from "node:path";
 import envPaths from "env-paths";
-import type { ReviewComment, ReviewCommentWithId } from "../review/types";
+import type { ReviewComment, StoredReviewComment } from "../review/types";
 
 /**
  * Cache structure for review context and pending comments
@@ -32,7 +32,7 @@ export type CachedContext = {
 
 		version: string;
 	};
-	comments?: ReviewCommentWithId[];
+	comments?: StoredReviewComment[];
 	reviewedAt?: string;
 };
 
@@ -204,7 +204,7 @@ export default class LocalCache {
 		}
 
 		// Preserve existing comments if they exist
-		let existingComments: ReviewCommentWithId[] | undefined;
+		let existingComments: StoredReviewComment[] | undefined;
 		let existingReviewedAt: string | undefined;
 		if (existsSync(cachePath)) {
 			try {
@@ -386,7 +386,7 @@ export default class LocalCache {
 		}
 
 		// Update comments and reviewedAt timestamp
-		cached.comments = comments as ReviewCommentWithId[];
+		cached.comments = comments as StoredReviewComment[];
 		cached.reviewedAt = new Date().toISOString();
 
 		// Write back to cache
@@ -396,7 +396,7 @@ export default class LocalCache {
 	/**
 	 * Get all comments for a PR session
 	 */
-	async getComments(prKey: string): Promise<ReviewCommentWithId[]> {
+	async getComments(prKey: string): Promise<StoredReviewComment[]> {
 		// Parse prKey back into branches
 		const [sourceBranch, targetBranch] = prKey.split("|");
 		if (!sourceBranch || !targetBranch) {
@@ -426,7 +426,7 @@ export default class LocalCache {
 	async updateComment(
 		prKey: string,
 		commentId: string,
-		updates: Partial<ReviewCommentWithId>,
+		updates: Partial<StoredReviewComment>,
 	): Promise<void> {
 		// Parse prKey back into branches
 		const [sourceBranch, targetBranch] = prKey.split("|");
@@ -455,7 +455,7 @@ export default class LocalCache {
 		cached.comments[index] = {
 			...cached.comments[index],
 			...updates,
-		} as ReviewCommentWithId;
+		} as StoredReviewComment;
 
 		// Write back to cache
 		writeFileSync(cachePath, JSON.stringify(cached, null, 2), "utf-8");
