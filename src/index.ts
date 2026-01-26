@@ -17,10 +17,18 @@ import { ContextGathererFactory } from "./review/context-gatherer-factory";
 import { CodeContextReader } from "./ui/code-context-reader";
 import { UILogger } from "./ui/logger";
 
-const { PATH_TO_CLAUDE } = process.env;
+const { PATH_TO_CLAUDE, OPENROUTER_API_KEY } = process.env;
 if (!PATH_TO_CLAUDE) {
 	throw new Error("PATH_TO_CLAUDE environment variable is not set.");
 }
+if (!OPENROUTER_API_KEY) {
+	throw new Error("OPENROUTER_API_KEY environment variable is not set.");
+}
+
+// Configure environment for Claude Code to use OpenRouter
+process.env.ANTHROPIC_BASE_URL = "https://openrouter.ai/api";
+process.env.ANTHROPIC_AUTH_TOKEN = OPENROUTER_API_KEY;
+process.env.ANTHROPIC_API_KEY = ""; // Empty to avoid conflicts
 
 const main = async () => {
 	// ============================================================================
@@ -66,10 +74,12 @@ const main = async () => {
 	const ui = new UILogger();
 	const codeContextReader = new CodeContextReader();
 
-	// Initialize LangChain model
+	// Initialize LangChain model with OpenRouter
 	const model = new ChatAnthropic({
-		model: "claude-sonnet-4-5-20250929",
+		model: "anthropic/claude-sonnet-4-5-20250929",
 		temperature: 0,
+		apiKey: OPENROUTER_API_KEY,
+		baseURL: "https://openrouter.ai/api/v1",
 	});
 
 	// ============================================================================
