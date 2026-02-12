@@ -18,8 +18,6 @@ const result = db.prepare("select vec_version() as vec_version;").get();
 console.log(`vec_version=${JSON.stringify(result)}`);
 
 export class MemoryStorage {
-	private db;
-
 	constructor(databasePath?: string) {
 		if (databasePath) {
 			this.db = new Database(databasePath);

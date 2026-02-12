@@ -137,30 +137,30 @@ export class WorkflowStateManager {
 		for (const action of actions) {
 			switch (action) {
 				case "review_with_context":
-						options.push({
-							value: "review_with_context",
-							label: "Gather deep context and immadiately review code",
-							hint: "Main flow: Get context then review without prompt",
-							recommended: true,
-						});
+					options.push({
+						value: "review_with_context",
+						label: "Gather deep context and immadiately review code",
+						hint: "Main flow: Get context then review without prompt",
+						recommended: true,
+					});
 					break;
 
 				case "gather_context":
-						options.push({
-							value: "gather_context",
-							label: "🔍 Gather Deep Context",
-							hint: "Fetch Jira/Confluence context (enables better review)",
-							recommended: true,
-						});
+					options.push({
+						value: "gather_context",
+						label: "🔍 Gather Deep Context",
+						hint: "Fetch Jira/Confluence context (enables better review)",
+						recommended: true,
+					});
 					break;
 
 				case "refresh_context":
-						options.push({
-							value: "refresh_context",
-							label: "🔄 Refresh Context",
-							hint: `Context is outdated (from ${state.contextMeta?.gatheredFromCommit.substring(0, 8)})`,
-							recommended: false,
-						});
+					options.push({
+						value: "refresh_context",
+						label: "🔄 Refresh Context",
+						hint: `Context is outdated (from ${state.contextMeta?.gatheredFromCommit.substring(0, 8)})`,
+						recommended: false,
+					});
 					break;
 
 				case "handle_pending":
@@ -203,12 +203,12 @@ export class WorkflowStateManager {
 
 				case "handle_remote":
 					// Future feature
-						options.push({
-							value: "handle_remote",
-							label: `💬 Review ${state.remoteCommentsCount} Remote Comment${state.remoteCommentsCount !== 1 ? "s" : ""}`,
-							hint: "Review comments from pull request",
-							recommended: false,
-						});
+					options.push({
+						value: "handle_remote",
+						label: `💬 Review ${state.remoteCommentsCount} Remote Comment${state.remoteCommentsCount !== 1 ? "s" : ""}`,
+						hint: "Review comments from pull request",
+						recommended: false,
+					});
 					break;
 
 				case "exit":

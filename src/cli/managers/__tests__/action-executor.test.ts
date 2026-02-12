@@ -67,7 +67,7 @@ describe("ActionExecutor", () => {
 		},
 	};
 
-	const sampleState: WorkflowState = {
+	const _sampleState: WorkflowState = {
 		hasContext: true,
 		contextUpToDate: true,
 		hasComments: false,
