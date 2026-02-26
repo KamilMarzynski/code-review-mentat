@@ -69,45 +69,64 @@ export async function promptToSendCommentsToRemote(): Promise<boolean> {
 	return Boolean(shouldSend);
 }
 
-export async function promptCommentAction(): Promise<
-	"fix" | "accept" | "reject" | "skip" | "quit" | null
+export async function promptCommentAction(
+	hideCreateMemory = false,
+): Promise<
+	"fix" | "accept" | "reject" | "skip" | "quit" | "create_memory" | null
 > {
+	const allOptions = [
+		{
+			value: "fix",
+			label: "🔧 Fix with Claude",
+			hint: "Plan and implement a fix",
+		},
+		{
+			value: "accept",
+			label: "✓ Accept",
+			hint: "Accept the comment without changes",
+		},
+		{
+			value: "reject",
+			label: "✗ Reject",
+			hint: "Reject this comment permanently",
+		},
+		{
+			value: "create_memory",
+			label: "Create memory",
+			hint: "Distill this comment into a reusable memory",
+		},
+		{
+			value: "skip",
+			label: "⏭ Skip",
+			hint: "Skip for now, address in next session",
+		},
+		{
+			value: "quit",
+			label: "💤 Quit",
+			hint: "Stop processing and exit",
+		},
+	];
+
+	const options = hideCreateMemory
+		? allOptions.filter((opt) => opt.value !== "create_memory")
+		: allOptions;
+
 	const action = await clack.select({
 		message: theme.primary("What should we do?"),
-		options: [
-			{
-				value: "fix",
-				label: "🔧 Fix with Claude",
-				hint: "Plan and implement a fix",
-			},
-			{
-				value: "accept",
-				label: "✓ Accept",
-				hint: "Accept the comment without changes",
-			},
-			{
-				value: "reject",
-				label: "✗ Reject",
-				hint: "Reject this comment permanently",
-			},
-			{
-				value: "skip",
-				label: "⏭ Skip",
-				hint: "Skip for now, address in next session",
-			},
-			{
-				value: "quit",
-				label: "💤 Quit",
-				hint: "Stop processing and exit",
-			},
-		],
+		options,
 	});
 
 	if (clack.isCancel(action)) {
 		return null;
 	}
 
-	return action as "fix" | "accept" | "reject" | "skip" | "quit";
+	return action as
+		| "fix"
+		| "accept"
+		| "reject"
+		| "skip"
+		| "quit"
+		| "create_memory";
 }
 
 export async function promptPlanDecision(): Promise<

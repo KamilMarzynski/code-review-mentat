@@ -3,10 +3,11 @@ import type LocalCache from "../../../cache/local-cache";
 import type { PullRequest } from "../../../git-providers/types";
 import type { CodeReviewer } from "../../../review/code-reviewer";
 import type { ContextGatherer } from "../../../review/context-gatherer";
+import type { ContextGathererFactory } from "../../../review/context-gatherer-factory";
 import type {
 	ContextEvent,
-	ReviewCommentWithId,
 	ReviewEvent,
+	StoredReviewComment,
 } from "../../../review/types";
 import type { WorkflowState } from "../../types";
 import { ActionExecutor } from "../action-executor";
@@ -47,6 +48,7 @@ describe("ActionExecutor", () => {
 	let mockFixSession: FixSessionOrchestrator;
 	let mockCommentDisplay: CommentDisplayService;
 	let mockContextGatherer: ContextGatherer;
+	let mockContextGathererFactory: ContextGathererFactory;
 	let mockCodeReviewer: CodeReviewer;
 	let mockCache: LocalCache;
 
@@ -65,7 +67,7 @@ describe("ActionExecutor", () => {
 		},
 	};
 
-	const sampleState: WorkflowState = {
+	const _sampleState: WorkflowState = {
 		hasContext: true,
 		contextUpToDate: true,
 		hasComments: false,
@@ -138,6 +140,10 @@ describe("ActionExecutor", () => {
 			}),
 		} as unknown as ContextGatherer;
 
+		mockContextGathererFactory = {
+			create: mock(() => mockContextGatherer),
+		} as unknown as ContextGathererFactory;
+
 		mockCodeReviewer = {
 			review: mock(async function* () {
 				yield {
@@ -175,7 +181,7 @@ describe("ActionExecutor", () => {
 			mockCommentResolution,
 			mockFixSession,
 			mockCommentDisplay,
-			mockContextGatherer,
+			mockContextGathererFactory,
 			mockCodeReviewer,
 			mockCache,
 		);
@@ -222,7 +228,7 @@ describe("ActionExecutor", () => {
 
 		it("should return comments created during review", async () => {
 			// Mock cache to return 2 pending comments
-			const pendingComments: ReviewCommentWithId[] = [
+			const pendingComments: StoredReviewComment[] = [
 				{
 					id: "1",
 					file: "test.ts",
@@ -292,7 +298,7 @@ describe("ActionExecutor", () => {
 		});
 
 		it("should display review summary when comments exist", async () => {
-			const comments: ReviewCommentWithId[] = [
+			const comments: StoredReviewComment[] = [
 				{
 					id: "1",
 					file: "test.ts",
@@ -397,7 +403,7 @@ describe("ActionExecutor", () => {
 							message: "Test 2",
 							status: "accepted",
 						},
-					] satisfies ReviewCommentWithId[],
+					] satisfies StoredReviewComment[],
 			);
 
 			const count = await actionExecutor.executeSendAccepted(samplePR);
@@ -416,7 +422,7 @@ describe("ActionExecutor", () => {
 							message: "Test",
 							status: "pending",
 						},
-					] satisfies ReviewCommentWithId[],
+					] satisfies StoredReviewComment[],
 			);
 
 			const count = await actionExecutor.executeSendAccepted(samplePR);
@@ -435,7 +441,7 @@ describe("ActionExecutor", () => {
 							message: "Test",
 							status: "accepted",
 						},
-					] satisfies ReviewCommentWithId[],
+					] satisfies StoredReviewComment[],
 			);
 
 			mockPRWorkflow.postCommentsToRemote = mock(async () => {

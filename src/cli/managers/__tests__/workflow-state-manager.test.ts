@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, mock } from "bun:test";
 import type LocalCache from "../../../cache/local-cache";
 import type { PullRequest } from "../../../git-providers/types";
-import type { ReviewCommentWithId } from "../../../review/types";
+import type { StoredReviewComment } from "../../../review/types";
 import { WorkflowStateManager } from "../workflow-state-manager";
 
 /**
@@ -130,7 +130,7 @@ describe("WorkflowStateManager", () => {
 							message: "Test 5",
 							status: "rejected",
 						},
-					] satisfies ReviewCommentWithId[],
+					] satisfies StoredReviewComment[],
 			);
 
 			const state = await stateManager.detectState(samplePR);
@@ -158,8 +158,8 @@ describe("WorkflowStateManager", () => {
 							message: "Test 2",
 							// No status field - intentionally using type assertion for test
 							status: undefined,
-						} as unknown as ReviewCommentWithId,
-					] satisfies ReviewCommentWithId[],
+						} as unknown as StoredReviewComment,
+					] satisfies StoredReviewComment[],
 			);
 
 			const state = await stateManager.detectState(samplePR);

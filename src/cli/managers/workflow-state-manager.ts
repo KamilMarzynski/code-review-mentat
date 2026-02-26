@@ -101,13 +101,13 @@ export class WorkflowStateManager {
 			actions.push("refresh_context");
 		}
 
-		// Review - always available
-		actions.push("run_review");
-
 		// Handle pending comments - only when there are pending comments
 		if (state.pendingCount > 0) {
 			actions.push("handle_pending");
 		}
+
+		// Review - always available
+		actions.push("run_review");
 
 		// Send accepted comments - only when there are accepted comments
 		if (state.acceptedCount > 0) {
@@ -137,36 +137,39 @@ export class WorkflowStateManager {
 		for (const action of actions) {
 			switch (action) {
 				case "review_with_context":
-					if (!state.hasContext && !state.hasComments) {
-						options.push({
-							value: "review_with_context",
-							label: "Gather deep context and immadiately review code",
-							hint: "Main flow: Get context then review without prompt",
-							recommended: true,
-						});
-					}
+					options.push({
+						value: "review_with_context",
+						label: "Gather deep context and immadiately review code",
+						hint: "Main flow: Get context then review without prompt",
+						recommended: true,
+					});
 					break;
 
 				case "gather_context":
-					if (!state.hasContext) {
-						options.push({
-							value: "gather_context",
-							label: "🔍 Gather Deep Context",
-							hint: "Fetch Jira/Confluence context (enables better review)",
-							recommended: true,
-						});
-					}
+					options.push({
+						value: "gather_context",
+						label: "🔍 Gather Deep Context",
+						hint: "Fetch Jira/Confluence context (enables better review)",
+						recommended: true,
+					});
 					break;
 
 				case "refresh_context":
-					if (state.hasContext && !state.contextUpToDate) {
-						options.push({
-							value: "refresh_context",
-							label: "🔄 Refresh Context",
-							hint: `Context is outdated (from ${state.contextMeta?.gatheredFromCommit.substring(0, 8)})`,
-							recommended: false,
-						});
-					}
+					options.push({
+						value: "refresh_context",
+						label: "🔄 Refresh Context",
+						hint: `Context is outdated (from ${state.contextMeta?.gatheredFromCommit.substring(0, 8)})`,
+						recommended: false,
+					});
+					break;
+
+				case "handle_pending":
+					options.push({
+						value: "handle_pending",
+						label: `🔧 Handle ${state.pendingCount} Pending Comment${state.pendingCount !== 1 ? "s" : ""}`,
+						hint: "Review and resolve comments (fix, accept, or reject)",
+						recommended: state.pendingCount > 0,
+					});
 					break;
 
 				case "run_review": {
@@ -189,15 +192,6 @@ export class WorkflowStateManager {
 					break;
 				}
 
-				case "handle_pending":
-					options.push({
-						value: "handle_pending",
-						label: `🔧 Handle ${state.pendingCount} Pending Comment${state.pendingCount !== 1 ? "s" : ""}`,
-						hint: "Review and resolve comments (fix, accept, or reject)",
-						recommended: state.pendingCount > 0,
-					});
-					break;
-
 				case "send_accepted":
 					options.push({
 						value: "send_accepted",
@@ -209,14 +203,12 @@ export class WorkflowStateManager {
 
 				case "handle_remote":
 					// Future feature
-					if (state.hasRemoteComments) {
-						options.push({
-							value: "handle_remote",
-							label: `💬 Review ${state.remoteCommentsCount} Remote Comment${state.remoteCommentsCount !== 1 ? "s" : ""}`,
-							hint: "Review comments from pull request",
-							recommended: false,
-						});
-					}
+					options.push({
+						value: "handle_remote",
+						label: `💬 Review ${state.remoteCommentsCount} Remote Comment${state.remoteCommentsCount !== 1 ? "s" : ""}`,
+						hint: "Review comments from pull request",
+						recommended: false,
+					});
 					break;
 
 				case "exit":

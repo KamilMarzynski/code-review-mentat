@@ -212,9 +212,9 @@ export class CommentFormatter {
 		for (const word of words) {
 			if ((currentLine + word).length > maxWidth && currentLine.length > 0) {
 				lines.push(currentLine.trim());
-				currentLine = word + " ";
+				currentLine = `${word} `;
 			} else {
-				currentLine += word + " ";
+				currentLine += `${word} `;
 			}
 		}
 

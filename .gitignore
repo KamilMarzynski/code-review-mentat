@@ -37,3 +37,7 @@ code-review
 
 index
 mocks
+
+// Local database files
+database.sqlite
+vec0.dylib

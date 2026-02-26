@@ -3,8 +3,9 @@ import type LocalCache from "../../cache/local-cache";
 import type {
 	ReviewComment,
 	ReviewCommentStatus,
-	ReviewCommentWithId,
+	StoredReviewComment,
 } from "../../review/types";
+import type { CodeContextReader } from "../../ui/code-context-reader";
 import type { UILogger } from "../../ui/logger";
 import { theme } from "../../ui/theme";
 import { promptCommentAction } from "../cli-prompts";
@@ -20,6 +21,7 @@ import type { HandleCommentsResult } from "../types";
  */
 export class CommentResolutionManager {
 	constructor(
+		private codeContextReader: CodeContextReader,
 		private cache: LocalCache,
 		private ui: UILogger,
 	) {}
@@ -34,7 +36,7 @@ export class CommentResolutionManager {
 		accepted: number;
 		fixed: number;
 		rejected: number;
-		comments: ReviewCommentWithId[];
+		comments: StoredReviewComment[];
 	}> {
 		const comments = await this.cache.getComments(prKey);
 
@@ -55,7 +57,7 @@ export class CommentResolutionManager {
 	 */
 	public async getPendingComments(
 		prKey: string,
-	): Promise<ReviewCommentWithId[]> {
+	): Promise<StoredReviewComment[]> {
 		const comments = await this.cache.getComments(prKey);
 		return comments.filter((c) => c.status === "pending" || !c.status);
 	}
@@ -66,7 +68,7 @@ export class CommentResolutionManager {
 	 */
 	public async getAcceptedComments(
 		prKey: string,
-	): Promise<ReviewCommentWithId[]> {
+	): Promise<StoredReviewComment[]> {
 		const comments = await this.cache.getComments(prKey);
 		return comments.filter((c) => c.status === "accepted");
 	}
@@ -165,65 +167,117 @@ export class CommentResolutionManager {
 			);
 			this.ui.space();
 
-			// Display comment with context
-			await displayCommentFn(comment);
+			// Loop until we get a non-create_memory action
+			// (allows user to create memory, then decide what to do with the comment)
+			let shouldContinue = true;
+			let hideCreateMemory = comment.memoryCreated === true;
 
-			this.ui.space();
+			while (shouldContinue) {
+				// Display comment with context
+				await displayCommentFn(comment);
+				this.ui.space();
 
-			// Get user decision
-			const action = await promptCommentAction();
+				// Get user decision (hide create_memory if already created)
+				const action = await promptCommentAction(hideCreateMemory);
 
-			if (action === null) {
-				this.ui.cancel("Comment resolution cancelled");
-				break;
-			}
-
-			// Handle user action
-			switch (action) {
-				case "fix": {
-					await onFixRequested(comment, prKey, summary);
+				if (action === null) {
+					this.ui.cancel("Comment resolution cancelled");
+					shouldContinue = false;
 					break;
 				}
 
-				case "accept":
-					await this.cache.updateComment(prKey, comment.id, {
-						status: "accepted",
-					});
-					summary.accepted++;
-					this.ui.success(theme.success("✓ Comment accepted"));
-					break;
+				// Handle user action
+				switch (action) {
+					case "create_memory": {
+						this.ui.info(theme.accent("Creating memory from comment..."));
 
-				case "reject": {
-					await this.cache.updateComment(prKey, comment.id, {
-						status: "rejected",
-					});
+						// TODO: Implement actual MCP memory creation here
+						// Example:
+						// await mcpClient.createEntity({
+						//   entityType: "code_review_pattern",
+						//   name: `Review: ${comment.file}`,
+						//   observations: [comment.message, comment.rationale]
+						// });
 
-					summary.rejected++;
-					this.ui.logStep(theme.muted("✗ Comment rejected"));
-					break;
-				}
+						this.ui.warn(
+							theme.warning(
+								"⚠️ MCP memory integration not yet implemented - placeholder only",
+							),
+						);
 
-				case "skip":
-					summary.skipped++;
-					this.ui.logStep(theme.muted("⏭ Comment skipped"));
-					break;
+						// Mark that memory was created for this comment
+						await this.cache.updateComment(prKey, comment.id, {
+							memoryCreated: true,
+						});
 
-				case "quit":
-					this.ui.info(theme.secondary("Exiting comment resolution..."));
+						this.ui.success(theme.success("✓ Memory created (and cached)"));
 
-					if (summary.fixed + summary.accepted + summary.rejected > 0) {
-						console.log("");
-						this.displayResolutionSummary(summary);
+						// Loop back: re-display comment and prompt again (without create_memory option)
+						this.ui.space();
+						this.ui.info(
+							theme.secondary("Now decide what to do with this comment:"),
+						);
+						this.ui.space();
+
+						// Hide create_memory option on next iteration
+						hideCreateMemory = true;
+						// Continue the while loop to re-prompt
+						break;
 					}
 
-					this.ui.sectionComplete("Comment resolution paused");
-					return {
-						processed: summary.fixed + summary.accepted + summary.rejected,
-						fixed: summary.fixed,
-						accepted: summary.accepted,
-						rejected: summary.rejected,
-						skipped: summary.skipped,
-					};
+					case "fix": {
+						await onFixRequested(comment, prKey, summary);
+						shouldContinue = false;
+						break;
+					}
+
+					case "accept":
+						await this.cache.updateComment(prKey, comment.id, {
+							status: "accepted",
+						});
+						summary.accepted++;
+						this.ui.success(theme.success("✓ Comment accepted"));
+						shouldContinue = false;
+						break;
+
+					case "reject": {
+						await this.cache.updateComment(prKey, comment.id, {
+							status: "rejected",
+						});
+						summary.rejected++;
+						this.ui.logStep(theme.muted("✗ Comment rejected"));
+						shouldContinue = false;
+						break;
+					}
+
+					case "skip":
+						summary.skipped++;
+						this.ui.logStep(theme.muted("⏭ Comment skipped"));
+						shouldContinue = false;
+						break;
+
+					case "quit":
+						this.ui.info(theme.secondary("Exiting comment resolution..."));
+
+						if (summary.fixed + summary.accepted + summary.rejected > 0) {
+							console.log("");
+							this.displayResolutionSummary(summary);
+						}
+
+						this.ui.sectionComplete("Comment resolution paused");
+						return {
+							processed: summary.fixed + summary.accepted + summary.rejected,
+							fixed: summary.fixed,
+							accepted: summary.accepted,
+							rejected: summary.rejected,
+							skipped: summary.skipped,
+						};
+				}
+
+				if (!shouldContinue && action === null) {
+					// If user cancelled, break out of loop
+					break;
+				}
 			}
 		}
 
@@ -277,13 +331,42 @@ export class CommentResolutionManager {
 	public async saveCommentsToCache(
 		comments: ReviewComment[],
 		prKey: string,
-	): Promise<ReviewCommentWithId[]> {
-		// Add IDs to comments if missing
-		const commentsWithIds = comments.map((c) => ({
-			...c,
-			id: c.id || randomUUID(),
-			status: c.status || ("pending" as ReviewCommentStatus),
-		}));
+	): Promise<StoredReviewComment[]> {
+		// Add IDs to comments if missing and fetch code snippets
+		const commentsWithIds = await Promise.all(
+			comments.map(async (c) => {
+				let codeSnippet = "";
+				if (c.startLine !== undefined && c.endLine !== undefined) {
+					const fileRange = await this.codeContextReader.readFileRange(
+						c.file,
+						c.startLine,
+						c.endLine,
+					);
+					if (fileRange.success) {
+						codeSnippet = fileRange.lines
+							.map((line) => line.content)
+							.join("\n");
+					}
+				} else if (c.line !== undefined) {
+					const fileLines = await this.codeContextReader.readFileLines(
+						c.file,
+						c.line,
+					);
+					if (fileLines.success) {
+						codeSnippet = fileLines.lines
+							.map((line) => line.content)
+							.join("\n");
+					}
+				}
+
+				return {
+					...c,
+					id: c.id || randomUUID(),
+					status: c.status || ("pending" as ReviewCommentStatus),
+					codeSnippet,
+				};
+			}),
+		);
 
 		// Check if we already have comments cached
 		const existingComments = await this.cache.getComments(prKey);

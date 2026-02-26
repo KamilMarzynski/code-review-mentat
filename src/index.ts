@@ -1,5 +1,4 @@
-import { ChatAnthropic } from "@langchain/anthropic";
-import { createAgent } from "langchain";
+import { ChatOpenAI } from "@langchain/openai";
 import LocalCache from "./cache/local-cache";
 import { ActionExecutor } from "./cli/managers/action-executor";
 import { CommentDisplayService } from "./cli/managers/comment-display-service";
@@ -10,17 +9,26 @@ import { PRWorkflowManager } from "./cli/managers/pr-workflow-manager";
 import { WorkflowStateManager } from "./cli/managers/workflow-state-manager";
 import { CLIOrchestrator } from "./cli/orchestrator";
 import GitOperations from "./git/operations";
-import BitbucketServerGitProvider from "./git-providers/bitbucket";
+import { GitProviderFactory } from "./git-providers/factory";
 import { createMCPClient, getMCPTools } from "./mcp/client";
 import { CodeReviewer } from "./review/code-reviewer";
 import { CommentFixer } from "./review/comment-fixer";
-import { ContextGatherer } from "./review/context-gatherer";
+import { ContextGathererFactory } from "./review/context-gatherer-factory";
+import { CodeContextReader } from "./ui/code-context-reader";
 import { UILogger } from "./ui/logger";
 
-const { PATH_TO_CLAUDE } = process.env;
+const { PATH_TO_CLAUDE, OPENROUTER_API_KEY } = process.env;
 if (!PATH_TO_CLAUDE) {
 	throw new Error("PATH_TO_CLAUDE environment variable is not set.");
 }
+if (!OPENROUTER_API_KEY) {
+	throw new Error("OPENROUTER_API_KEY environment variable is not set.");
+}
+
+// Configure environment for Claude Code to use OpenRouter
+process.env.ANTHROPIC_BASE_URL = "https://openrouter.ai/api";
+process.env.ANTHROPIC_AUTH_TOKEN = OPENROUTER_API_KEY;
+process.env.ANTHROPIC_API_KEY = ""; // Empty to avoid conflicts
 
 const main = async () => {
 	// ============================================================================
@@ -33,7 +41,7 @@ const main = async () => {
 	//    - git: GitOperations
 	//    - cache: LocalCache
 	//    - ui: UILogger
-	//    - model: ChatAnthropic (LangChain)
+	//    - model: ChatOpenAI via OpenRouter (LangChain)
 	//
 	// 2. Service Layer
 	//    - Context: ContextGatherer, CodeReviewer, ReviewService
@@ -64,59 +72,40 @@ const main = async () => {
 	const git = new GitOperations();
 	const cache = new LocalCache();
 	const ui = new UILogger();
+	const codeContextReader = new CodeContextReader();
 
-	// Initialize LangChain model
-	const model = new ChatAnthropic({
-		model: "claude-sonnet-4-5-20250929",
+	// Initialize LangChain model with OpenRouter (OpenAI-compatible API)
+	const model = new ChatOpenAI({
+		model: "anthropic/claude-sonnet-4.6",
 		temperature: 0,
+		apiKey: OPENROUTER_API_KEY,
+		configuration: {
+			baseURL: "https://openrouter.ai/api/v1",
+		},
 	});
 
 	// ============================================================================
 	// Service Layer
 	// ============================================================================
-	// Factory function to lazily create context gatherer when needed
-	const createContextGatherer = async () => {
-		const { tools } = await mcpInitPromise;
-		const contextGathererAgent = createAgent({
-			model,
-			tools,
-			systemPrompt: `You are a code review context specialist.
-
-## Your Goal
-Gather ONLY information that will help an AI perform code review. Focus on:
-1. Business requirements from Jira tickets
-2. Technical specifications from Confluence
-3. Related architectural decisions
-
-## Process
-1. Extract ticket references from PR title, description, and commits (e.g., PROJ-123)
-2. Fetch each ticket and summarize acceptance criteria
-3. Search Confluence for related technical documentation
-4. Synthesize findings into actionable context
-
-## Output Format
-Provide a structured summary:
-- **Requirements**: What the PR should accomplish
-- **Technical Context**: Relevant architecture/patterns
-- **Edge Cases**: Known constraints or special handling
-
-## Constraints
-- Skip information already in the PR description
-- Focus on REQUIREMENTS, not implementation details`,
-		});
-		return new ContextGatherer(contextGathererAgent);
-	};
-
 	// Initialize review services
 	const codeReviewer = new CodeReviewer(PATH_TO_CLAUDE);
 	const commentFixer = new CommentFixer(PATH_TO_CLAUDE);
 
-	// Provider factory function
-	const createProvider = (remote: string) =>
-		new BitbucketServerGitProvider(remote);
+	// Create factory for lazy initialization of context gatherer
+	const contextGathererFactory = new ContextGathererFactory(model, async () => {
+		const { tools } = await mcpInitPromise;
+		return tools;
+	});
 
-	const prWorkflow = new PRWorkflowManager(git, createProvider, ui);
-	const commentResolution = new CommentResolutionManager(cache, ui);
+	// Create git provider factory
+	const gitProviderFactory = new GitProviderFactory();
+
+	const prWorkflow = new PRWorkflowManager(git, gitProviderFactory, ui);
+	const commentResolution = new CommentResolutionManager(
+		codeContextReader,
+		cache,
+		ui,
+	);
 
 	const fixSession = new FixSessionOrchestrator(commentFixer, git, cache, ui);
 	const commentDisplay = new CommentDisplayService(ui);
@@ -130,13 +119,12 @@ Provide a structured summary:
 	// - PostActionHandler: Provides smart flow transitions after actions
 	// ============================================================================
 	const stateManager = new WorkflowStateManager(cache);
-	const contextGatherer = await createContextGatherer();
 	const actionExecutor = new ActionExecutor(
 		prWorkflow,
 		commentResolution,
 		fixSession,
 		commentDisplay,
-		contextGatherer,
+		contextGathererFactory,
 		codeReviewer,
 		cache,
 	);

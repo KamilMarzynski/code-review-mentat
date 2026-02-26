@@ -1,4 +1,5 @@
 import type GitOperations from "../../git/operations";
+import type { GitProviderFactory } from "../../git-providers/factory";
 import type {
 	CreatePullRequestCommentRequest,
 	GitProvider,
@@ -14,13 +15,12 @@ export class PRWorkflowManager {
 
 	constructor(
 		private git: GitOperations,
-		// TODO: Inject a factory or use a provider registry
-		private createProvider: (remote: string) => GitProvider,
+		private gitProviderFactory: GitProviderFactory,
 		private ui: UILogger,
 	) {}
 
 	public async setProviderForRemote(remote: string): Promise<void> {
-		this.provider = this.createProvider(remote);
+		this.provider = this.gitProviderFactory.create(remote);
 	}
 
 	public async checkWorkspaceClean(): Promise<boolean> {

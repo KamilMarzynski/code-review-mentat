@@ -45,13 +45,13 @@ Before you begin, ensure you have the following installed and configured:
 
 You need to set up the following environment variables:
 
-1. **`ANTHROPIC_API_KEY`** - Your Anthropic API key for Claude AI  
-   Get it from: https://console.anthropic.com/
+1. **`OPENROUTER_API_KEY`** - Your OpenRouter API key for Claude AI access
+   Get it from: https://openrouter.ai/
 
-2. **`BB_TOKEN`** - Your Bitbucket Personal Access Token  
+2. **`BB_TOKEN`** - Your Bitbucket Personal Access Token
    Generate from your Bitbucket Server settings with read permissions for repositories and pull requests
 
-3. **`PATH_TO_CLAUDE`** - Path to your Claude Code executable file  
+3. **`PATH_TO_CLAUDE`** - Path to your Claude Code executable file
    Example: `/Applications/Claude.app/Contents/MacOS/Claude`
 
 ### Setting Environment Variables
@@ -59,7 +59,7 @@ You need to set up the following environment variables:
 Add these to your shell configuration file (`~/.zshrc` or `~/.bashrc`):
 
 ```bash
-export ANTHROPIC_API_KEY="your-anthropic-api-key"
+export OPENROUTER_API_KEY="your-openrouter-api-key"
 export BB_TOKEN="your-bitbucket-token"
 export PATH_TO_CLAUDE="/Applications/Claude.app/Contents/MacOS/Claude"
 ```

@@ -18,10 +18,12 @@ export type ReviewComment = {
 	status: ReviewCommentStatus;
 	confidence?: "high" | "medium" | "low";
 	verifiedBy?: string; // Tool used to verify (e.g., "Grep: found 3 usages")
+	memoryCreated?: boolean; // Track if memory was created for this comment
 };
 
-export type ReviewCommentWithId = ReviewComment & {
+export type StoredReviewComment = ReviewComment & {
 	id: string;
+	codeSnippet?: string; // Code snippet related to the comment
 };
 
 export type FixIteration = {

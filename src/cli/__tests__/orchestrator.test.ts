@@ -86,7 +86,7 @@ describe("CLIOrchestrator Integration", () => {
 	let mockActionExecutor: ActionExecutor;
 	let mockPostActionHandler: PostActionHandler;
 
-	const samplePR: PullRequest = {
+	const _samplePR: PullRequest = {
 		id: 123,
 		title: "Test PR",
 		description: "Test description",
