@@ -1,4 +1,4 @@
-import { ChatAnthropic } from "@langchain/anthropic";
+import { ChatOpenAI } from "@langchain/openai";
 import LocalCache from "./cache/local-cache";
 import { ActionExecutor } from "./cli/managers/action-executor";
 import { CommentDisplayService } from "./cli/managers/comment-display-service";
@@ -41,7 +41,7 @@ const main = async () => {
 	//    - git: GitOperations
 	//    - cache: LocalCache
 	//    - ui: UILogger
-	//    - model: ChatAnthropic (LangChain)
+	//    - model: ChatOpenAI via OpenRouter (LangChain)
 	//
 	// 2. Service Layer
 	//    - Context: ContextGatherer, CodeReviewer, ReviewService
@@ -74,12 +74,14 @@ const main = async () => {
 	const ui = new UILogger();
 	const codeContextReader = new CodeContextReader();
 
-	// Initialize LangChain model with OpenRouter
-	const model = new ChatAnthropic({
-		model: "anthropic/claude-sonnet-4-5-20250929",
+	// Initialize LangChain model with OpenRouter (OpenAI-compatible API)
+	const model = new ChatOpenAI({
+		model: "anthropic/claude-sonnet-4.6",
 		temperature: 0,
 		apiKey: OPENROUTER_API_KEY,
-		baseURL: "https://openrouter.ai/api/v1",
+		configuration: {
+			baseURL: "https://openrouter.ai/api/v1",
+		},
 	});
 
 	// ============================================================================

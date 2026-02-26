@@ -1,4 +1,4 @@
-import type { ChatAnthropic } from "@langchain/anthropic";
+import type { BaseChatModel } from "@langchain/core/language_models/chat_models";
 import type { ClientTool, ServerTool } from "@langchain/core/tools";
 import { ContextGatherer } from "./context-gatherer";
 
@@ -10,7 +10,7 @@ import { ContextGatherer } from "./context-gatherer";
  */
 export class ContextGathererFactory {
 	constructor(
-		private model: ChatAnthropic,
+		private model: BaseChatModel,
 		private getTools: () => Promise<(ServerTool | ClientTool)[]>,
 	) {}
 

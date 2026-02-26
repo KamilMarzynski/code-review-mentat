@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 This is an automated code review CLI tool that uses Claude Code to review pull requests from Git providers (currently Bitbucket Server, with plans for GitLab and GitHub). The tool:
 1. Fetches pull request details from the Git provider API
 2. Gathers additional context from Jira/Confluence via MCP servers
-3. Uses Claude Code Agent SDK (`anthropic/claude-sonnet-4-5-20250929` via OpenRouter) to perform automated code review in read-only mode
+3. Uses Claude Code Agent SDK (`anthropic/claude-sonnet-4.5` via OpenRouter) to perform automated code review in read-only mode
 4. Returns structured, verified review comments with severity levels and status tracking
 5. Supports interactive comment fixing with planning and execution phases
 
@@ -332,7 +332,7 @@ Safety is enforced at multiple levels:
 - **Runtime**: Bun (macOS only)
 - **TypeScript**: Strict mode, module resolution: bundler, no emit
 - **Linting**: Biome for linting and formatting
-- **Model**: anthropic/claude-sonnet-4-5-20250929 (via OpenRouter)
+- **Model**: anthropic/claude-sonnet-4.6 (via OpenRouter)
 - **API Provider**: OpenRouter (all requests billed through OpenRouter)
 - **Key Dependencies**:
   - `@anthropic-ai/claude-agent-sdk` - Claude Code integration
