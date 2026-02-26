@@ -15,7 +15,6 @@ export class CommentFixer {
 		version: "latest",
 	};
 
-	// biome-ignore lint/correctness/noUnusedPrivateClassMembers: used in Task 5 (fix-execute prompt migration)
 	private static readonly FIX_EXECUTE_CONFIG: PromptConfig = {
 		name: "fix-execute",
 		version: "latest",
@@ -120,7 +119,20 @@ export class CommentFixer {
 		finalThoughts: string;
 		error?: string;
 	}> {
-		const prompt = this.buildExecutionPrompt(approvedPlan, context);
+		const prompt = loadPrompt(CommentFixer.FIX_EXECUTE_CONFIG, {
+			approach: approvedPlan.approach,
+			steps: approvedPlan.steps
+				.map((step, i) => `${i + 1}. ${step}`)
+				.join("\n"),
+			filesAffected: approvedPlan.filesAffected.map((f) => `- ${f}`).join("\n"),
+			risksSection:
+				approvedPlan.potentialRisks.length > 0
+					? `**Risks to watch for:**\n${approvedPlan.potentialRisks.map((r) => `- ${r}`).join("\n")}\n`
+					: "",
+			additionalContextSection: context.userOptionalNotes
+				? `## Additional Context\n${context.userOptionalNotes}\n`
+				: "",
+		});
 
 		const filesModified = new Set<string>();
 		let finalThoughts = "";
@@ -267,66 +279,6 @@ export class CommentFixer {
 			filesModified: Array.from(filesModified),
 			finalThoughts,
 		};
-	}
-
-	private buildExecutionPrompt(
-		plan: FixPlan,
-		context: {
-			userOptionalNotes?: string;
-		},
-	): string {
-		return [
-			"# Execute Approved Fix Plan",
-			"## Your Approved Plan",
-			"",
-			"**Approach:**",
-			plan.approach,
-			"",
-			"**Steps:**",
-			...plan.steps.map((step, i) => `${i + 1}. ${step}`),
-			"",
-			"**Files to modify:**",
-			...plan.filesAffected.map((f) => `- ${f}`),
-			"",
-			plan.potentialRisks.length > 0
-				? [
-						"**Risks to watch for:**",
-						...plan.potentialRisks.map((r) => `- ${r}`),
-						"",
-					].join("\n")
-				: "",
-			context.userOptionalNotes
-				? ["## Additional Context", context.userOptionalNotes, ""].join("\n")
-				: "",
-			"## Your Task",
-			"",
-			"**Execute the approved plan above.**",
-			"",
-			"## Execution Rules",
-			"",
-			"✅ DO:",
-			"- Follow each step in order",
-			"- Read files before editing to understand current state",
-			"- Make surgical, minimal edits",
-			"- After editing, validate your changes (run tests/linters if applicable)",
-			"- Verify your changes make sense in context",
-			"",
-			"❌ DO NOT:",
-			"- Edit files not in the approved list without good reason",
-			"- Make unrelated improvements or refactors",
-			"- Continue if you're confused - stop and explain",
-			"- Change more code than necessary",
-			"",
-			"## Error Handling",
-			"If something unexpected happens:",
-			"- STOP immediately",
-			"- Do NOT try to fix cascading issues beyond the scope",
-			"- Explain what went wrong",
-			"",
-			"Begin implementation now.",
-		]
-			.filter(Boolean)
-			.join("\n");
 	}
 
 	private describeToolUse(toolName: string, input: any): string {
