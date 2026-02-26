@@ -59,6 +59,12 @@ describe("PromptLoader", () => {
 		).toThrow("Prompt directory not found: nonexistent");
 	});
 
+	test("throws when a specific version number does not exist", () => {
+		expect(() => loadPrompt({ name: "test-prompt", version: 99 })).toThrow(
+			"Prompt version v99 not found for: test-prompt",
+		);
+	});
+
 	test("caches file content — re-reads return the original value", () => {
 		// Load once to prime the cache
 		const result1 = loadPrompt({ name: "static-prompt", version: 1 });

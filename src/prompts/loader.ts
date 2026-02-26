@@ -25,7 +25,8 @@ export function createPromptLoader(baseDir: string) {
 		const versions = files
 			.map((f) => f.match(/^v(\d+)\.md$/))
 			.filter((m): m is RegExpMatchArray => m !== null)
-			.map((m) => parseInt(m[1], 10));
+			.map((m) => parseInt(m[1], 10))
+			.filter((v) => Number.isSafeInteger(v));
 
 		if (versions.length === 0) {
 			throw new Error(`No version files found in prompt directory: ${name}`);
@@ -55,7 +56,13 @@ export function createPromptLoader(baseDir: string) {
 		let content = cache.get(cacheKey);
 		if (content === undefined) {
 			const filePath = join(baseDir, config.name, `v${version}.md`);
-			content = readFileSync(filePath, "utf-8");
+			try {
+				content = readFileSync(filePath, "utf-8");
+			} catch {
+				throw new Error(
+					`Prompt version v${version} not found for: ${config.name}`,
+				);
+			}
 			cache.set(cacheKey, content);
 		}
 
