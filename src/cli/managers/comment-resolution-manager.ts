@@ -191,13 +191,7 @@ export class CommentResolutionManager {
 					case "create_memory": {
 						this.ui.info(theme.accent("Creating memory from comment..."));
 
-						// TODO: Implement actual MCP memory creation here
-						// Example:
-						// await mcpClient.createEntity({
-						//   entityType: "code_review_pattern",
-						//   name: `Review: ${comment.file}`,
-						//   observations: [comment.message, comment.rationale]
-						// });
+						// TODO: Implement actual memory creation
 
 						this.ui.warn(
 							theme.warning(
@@ -210,7 +204,7 @@ export class CommentResolutionManager {
 							memoryCreated: true,
 						});
 
-						this.ui.success(theme.success("✓ Memory created (and cached)"));
+						this.ui.success(theme.success("✓ Memory stored"));
 
 						// Loop back: re-display comment and prompt again (without create_memory option)
 						this.ui.space();
