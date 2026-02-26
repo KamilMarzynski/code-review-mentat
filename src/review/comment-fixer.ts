@@ -1,3 +1,4 @@
+import { loadPrompt, type PromptConfig } from "../prompts/loader";
 import { ClaudeQueryExecutor } from "./claude-query-executor";
 import type { ReviewComment } from "./types";
 
@@ -9,6 +10,17 @@ export type FixPlan = {
 };
 
 export class CommentFixer {
+	private static readonly FIX_PLAN_CONFIG: PromptConfig = {
+		name: "fix-plan",
+		version: "latest",
+	};
+
+	// biome-ignore lint/correctness/noUnusedPrivateClassMembers: used in Task 5 (fix-execute prompt migration)
+	private static readonly FIX_EXECUTE_CONFIG: PromptConfig = {
+		name: "fix-execute",
+		version: "latest",
+	};
+
 	private executor: ClaudeQueryExecutor;
 
 	constructor(claudePath: string) {
@@ -26,60 +38,18 @@ export class CommentFixer {
 			previousPlanFeedback?: string; // For iteration
 		},
 	): Promise<FixPlan> {
-		const prompt = [
-			"# Plan a Fix for Code Review Comment",
-			"",
-			"## Comment to Fix",
-			`**File:** ${comment.file}`,
-			comment.line ? `**Line:** ${comment.line}` : "",
-			`**Issue:** ${comment.message}`,
-			comment.rationale ? `**Why:** ${comment.rationale}` : "",
-			"",
-			"## SCOPE CONSTRAINTS - READ CAREFULLY",
-			"",
-			"⚠️ Your fix MUST be minimal and focused:",
-			"- ONLY fix the specific issue mentioned in the comment",
-			"- Do NOT refactor unrelated code",
-			"- Do NOT add features or improvements beyond the fix",
-			"- Do NOT touch files that aren't necessary for the fix",
-			"- Prefer surgical changes over broad refactors",
-			"",
-			"If the fix genuinely requires changes to multiple files, explain why.",
-			"If you're unsure, propose the SMALLEST possible fix.",
-			"",
-			context.userOptionalNotes
-				? ["## Additional Context", context.userOptionalNotes, ""].join("\n")
+		const prompt = loadPrompt(CommentFixer.FIX_PLAN_CONFIG, {
+			file: comment.file,
+			lineSection: comment.line ? `**Line:** ${comment.line}` : "",
+			issue: comment.message,
+			whySection: comment.rationale ? `**Why:** ${comment.rationale}` : "",
+			additionalContextSection: context.userOptionalNotes
+				? `## Additional Context\n${context.userOptionalNotes}\n`
 				: "",
-			context.previousPlanFeedback
-				? [
-						"## Feedback on Previous Plan",
-						context.previousPlanFeedback,
-						"",
-						"Please revise your plan based on this feedback.",
-						"",
-					].join("\n")
+			previousPlanFeedbackSection: context.previousPlanFeedback
+				? `## Feedback on Previous Plan\n${context.previousPlanFeedback}\n\nPlease revise your plan based on this feedback.\n`
 				: "",
-			"## Your Task",
-			"",
-			"Create a PLAN to fix this issue. Do NOT write code yet.",
-			"",
-			"Your plan should include:",
-			"1. High-level approach (1-2 sentences)",
-			"2. Step-by-step implementation steps (be specific)",
-			"3. List of files that will be affected (keep minimal)",
-			"4. Potential risks or edge cases",
-			"",
-			"## Plan Quality Checklist",
-			"Before finalizing, verify your plan:",
-			"- [ ] Fixes ONLY the specific issue (not adjacent problems)",
-			"- [ ] Affects the minimum number of files",
-			"- [ ] Each step is concrete and actionable",
-			"- [ ] Risks are realistic, not theoretical",
-			"",
-			"Be specific but concise.",
-		]
-			.filter(Boolean)
-			.join("\n");
+		});
 
 		const schema = {
 			type: "object",
