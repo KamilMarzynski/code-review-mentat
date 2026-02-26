@@ -19,6 +19,13 @@ describe("PromptLoader", () => {
 		mkdirSync(join(tmpDir, "static-prompt"));
 		writeFileSync(join(tmpDir, "static-prompt", "v1.md"), "No variables here.");
 
+		// Prompt with an HTML comment block that documents variables
+		mkdirSync(join(tmpDir, "commented-prompt"));
+		writeFileSync(
+			join(tmpDir, "commented-prompt", "v1.md"),
+			"<!--\nVariables:\n  {{name}} - a name\n-->\n\nHello {{name}}!",
+		);
+
 		loadPrompt = createPromptLoader(tmpDir);
 	});
 
@@ -63,6 +70,15 @@ describe("PromptLoader", () => {
 		expect(() => loadPrompt({ name: "test-prompt", version: 99 })).toThrow(
 			"Prompt version v99 not found for: test-prompt",
 		);
+	});
+
+	test("strips HTML comment blocks before interpolation", () => {
+		const result = loadPrompt(
+			{ name: "commented-prompt", version: "latest" },
+			{ name: "World" },
+		);
+		expect(result).toBe("Hello World!");
+		expect(result).not.toContain("<!--");
 	});
 
 	test("caches file content — re-reads return the original value", () => {

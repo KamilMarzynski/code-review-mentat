@@ -230,6 +230,7 @@ export class CodeReviewer {
 		});
 	}
 
+	// Note: must not return a trailing newline — the blank line in the prompt template acts as separator.
 	private buildContextGuidance(context: string | undefined): string {
 		if (!context || context === "Context gathering failed.") {
 			return "";

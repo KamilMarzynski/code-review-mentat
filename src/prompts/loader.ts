@@ -35,6 +35,10 @@ export function createPromptLoader(baseDir: string) {
 		return Math.max(...versions);
 	}
 
+	function stripHtmlComments(content: string): string {
+		return content.replace(/<!--[\s\S]*?-->/g, "").trim();
+	}
+
 	function interpolate(content: string, variables: PromptVariables): string {
 		return content.replace(/\{\{(\w+)\}\}/g, (_, key) => {
 			if (!(key in variables)) {
@@ -66,7 +70,7 @@ export function createPromptLoader(baseDir: string) {
 			cache.set(cacheKey, content);
 		}
 
-		return interpolate(content, variables);
+		return interpolate(stripHtmlComments(content), variables);
 	};
 }
 
