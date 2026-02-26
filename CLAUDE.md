@@ -132,7 +132,7 @@ The orchestrator runs a state machine:
 - Uses LangChain agent with Atlassian MCP tools (Jira/Confluence)
 - Extracts Jira ticket references from PR title/description/commits
 - Fetches relevant context to understand requirements
-- Limited to 5 tool calls per PR to control costs
+- Limited to 10 tool calls per PR to control costs
 - Returns context summary for code review
 
 **`context-gatherer-factory.ts`**:
@@ -245,7 +245,7 @@ Comprehensive type definitions for review workflow:
 1. Extract Jira ticket references from PR metadata
 2. Use MCP tools to fetch Jira ticket details and Confluence pages
 3. Generate context summary for code review
-4. Limit to 5 tool calls to control costs
+4. Limit to 10 tool calls to control costs
 
 ### Code Review Workflow
 1. Checkout PR source commit (detached HEAD)
