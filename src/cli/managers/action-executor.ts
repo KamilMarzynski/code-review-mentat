@@ -48,17 +48,17 @@ export class ActionExecutor {
 	 * @param refresh - Whether to refresh existing context
 	 */
 	async executeGatherContext(pr: PullRequest): Promise<void> {
-		// Lazy initialization of context gatherer
-		if (!this.contextGatherer) {
-			this.contextGatherer = await this.contextGathererFactory.create();
-		}
-
 		const spinner = ui.spinner();
 		const toolsByType = new Map<string, number>();
 		let hasError = false;
 		let spinnerStarted = false;
 
 		try {
+			// Lazy initialization of context gatherer
+			if (!this.contextGatherer) {
+				this.contextGatherer = await this.contextGathererFactory.create();
+			}
+
 			// Fetch commit history and edited files
 			const commitMessages = await this.prWorkflow.fetchCommitHistory(pr);
 			const { editedFiles } = await this.prWorkflow.analyzeChanges(pr);
@@ -116,7 +116,8 @@ export class ActionExecutor {
 
 						case "context_success":
 							if (!hasError) {
-								ui.sectionComplete("Deep context synthesis complete");
+								spinner.stop(theme.success("✓ Deep context synthesis complete"));
+								spinnerStarted = false;
 							}
 							break;
 

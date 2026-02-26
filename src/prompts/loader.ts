@@ -1,5 +1,6 @@
-import { readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { homedir } from "node:os";
 
 export type PromptConfig = {
 	name: string;
@@ -74,6 +75,17 @@ export function createPromptLoader(baseDir: string) {
 	};
 }
 
+// Resolve the prompts base directory.
+// In dev (bun run): import.meta.dir = src/prompts/ — prompt subdirs live there directly.
+// In compiled binary: import.meta.dir = binary dir — prompts are copied to ~/.config/crm/prompts/.
+function resolvePromptsBaseDir(): string {
+	const sourceDir = import.meta.dir;
+	if (existsSync(join(sourceDir, "context-gatherer"))) {
+		return sourceDir;
+	}
+	return join(homedir(), ".config", "crm", "prompts");
+}
+
 // Default loader — uses the prompts directory alongside this file.
 // Import this in services; use createPromptLoader only in tests.
-export const loadPrompt = createPromptLoader(import.meta.dir);
+export const loadPrompt = createPromptLoader(resolvePromptsBaseDir());

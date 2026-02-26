@@ -22,6 +22,10 @@ sudo cp code-review "$INSTALL_DIR/crm"
 sudo cp vec0.dylib "$INSTALL_DIR/vec0.dylib"
 sudo chmod +x "$INSTALL_DIR/crm"
 
+echo "📝 Installing prompts to ~/.config/crm/prompts..."
+mkdir -p "$HOME/.config/crm"
+cp -r src/prompts "$HOME/.config/crm/prompts"
+
 echo ""
 echo "✨ Installation complete!"
 echo "You can now use 'crm' command from anywhere."
