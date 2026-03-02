@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import type LocalCache from "../../cache/local-cache";
+import type { MemoryService } from "../../memory/memory-service";
 import type {
 	ReviewComment,
 	ReviewCommentStatus,
@@ -8,7 +9,7 @@ import type {
 import type { CodeContextReader } from "../../ui/code-context-reader";
 import type { UILogger } from "../../ui/logger";
 import { theme } from "../../ui/theme";
-import { promptCommentAction } from "../cli-prompts";
+import { promptCommentAction, promptOptionalNotes } from "../cli-prompts";
 import type { HandleCommentsResult } from "../types";
 
 /**
@@ -24,6 +25,7 @@ export class CommentResolutionManager {
 		private codeContextReader: CodeContextReader,
 		private cache: LocalCache,
 		private ui: UILogger,
+		private memoryService: MemoryService,
 	) {}
 
 	/**
@@ -191,20 +193,31 @@ export class CommentResolutionManager {
 					case "create_memory": {
 						this.ui.info(theme.accent("Creating memory from comment..."));
 
-						// TODO: Implement actual memory creation
+						const additionalContext = await promptOptionalNotes();
 
-						this.ui.warn(
-							theme.warning(
-								"⚠️ MCP memory integration not yet implemented - placeholder only",
-							),
-						);
+						try {
+							const result = await this.memoryService.createMemory({
+								file: comment.file,
+								severity: comment.severity ?? "suggestion",
+								code: comment.codeSnippet ?? "",
+								comment: comment.message,
+								additionalContext,
+							});
 
-						// Mark that memory was created for this comment
-						await this.cache.updateComment(prKey, comment.id, {
-							memoryCreated: true,
-						});
+							await this.cache.updateComment(prKey, comment.id, {
+								memoryCreated: true,
+							});
 
-						this.ui.success(theme.success("✓ Memory stored"));
+							this.ui.success(theme.success("✓ Memory stored"));
+							this.ui.info(theme.secondary(`Situation: ${result.situation}`));
+							this.ui.info(theme.secondary(`Lesson: ${result.lesson}`));
+						} catch (error) {
+							this.ui.warn(
+								theme.warning(
+									`⚠️ Failed to create memory: ${error instanceof Error ? error.message : String(error)}`,
+								),
+							);
+						}
 
 						// Loop back: re-display comment and prompt again (without create_memory option)
 						this.ui.space();
@@ -213,9 +226,7 @@ export class CommentResolutionManager {
 						);
 						this.ui.space();
 
-						// Hide create_memory option on next iteration
 						hideCreateMemory = true;
-						// Continue the while loop to re-prompt
 						break;
 					}
 

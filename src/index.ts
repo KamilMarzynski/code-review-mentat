@@ -1,3 +1,5 @@
+import { homedir } from "node:os";
+import { join } from "node:path";
 import { ChatOpenAI } from "@langchain/openai";
 import LocalCache from "./cache/local-cache";
 import { ActionExecutor } from "./cli/managers/action-executor";
@@ -11,6 +13,7 @@ import { CLIOrchestrator } from "./cli/orchestrator";
 import GitOperations from "./git/operations";
 import { GitProviderFactory } from "./git-providers/factory";
 import { createMCPClient, getMCPTools } from "./mcp/client";
+import { MemoryService } from "./memory/memory-service";
 import { CodeReviewer } from "./review/code-reviewer";
 import { CommentFixer } from "./review/comment-fixer";
 import { ContextGathererFactory } from "./review/context-gatherer-factory";
@@ -74,6 +77,13 @@ const main = async () => {
 	const ui = new UILogger();
 	const codeContextReader = new CodeContextReader();
 
+	// Initialize memory service for storing review insights
+	const memoryService = new MemoryService({
+		dbPath: join(homedir(), ".config", "crm", "memories.sqlite"),
+		openRouterApiKey: OPENROUTER_API_KEY,
+	});
+	await memoryService.initialize();
+
 	// Initialize LangChain model with OpenRouter (OpenAI-compatible API)
 	const model = new ChatOpenAI({
 		model: "anthropic/claude-sonnet-4.6",
@@ -105,6 +115,7 @@ const main = async () => {
 		codeContextReader,
 		cache,
 		ui,
+		memoryService,
 	);
 
 	const fixSession = new FixSessionOrchestrator(commentFixer, git, cache, ui);
@@ -150,6 +161,8 @@ const main = async () => {
 	try {
 		await orchestrator.run();
 	} finally {
+		memoryService.close();
+
 		// Close MCP client if it was initialized
 		try {
 			const { mcpClient: client } = await Promise.race([
