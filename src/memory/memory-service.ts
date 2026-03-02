@@ -7,6 +7,8 @@ import { MemoryStore } from "./memory-store";
 import type {
 	CreateMemoryInput,
 	CreateMemoryResult,
+	MemorySearchOptions,
+	MemorySearchResult,
 	MemoryServiceConfig,
 } from "./types";
 
@@ -87,6 +89,42 @@ export class MemoryService {
 		});
 
 		return { id, situation, lesson };
+	}
+
+	async searchMemories(
+		query: string | string[],
+		options: MemorySearchOptions,
+	): Promise<MemorySearchResult[]> {
+		await this.ensureInitialized();
+
+		const store = this.store;
+		if (!store) {
+			throw new Error("MemoryStore not initialized");
+		}
+
+		const queries = Array.isArray(query) ? query : [query];
+		const allResults: MemorySearchResult[] = [];
+
+		for (const q of queries) {
+			const embedding = await this.embedder.embed(q);
+			const results = store.search(embedding, options);
+			allResults.push(...results);
+		}
+
+		// Deduplicate by ID, keeping best (lowest) distance
+		const bestByID = new Map<string, MemorySearchResult>();
+		for (const result of allResults) {
+			const existing = bestByID.get(result.id);
+			if (!existing || result.distance < existing.distance) {
+				bestByID.set(result.id, result);
+			}
+		}
+
+		const deduplicated = Array.from(bestByID.values());
+		deduplicated.sort((a, b) => a.distance - b.distance);
+
+		const limit = options.limit ?? 10;
+		return deduplicated.slice(0, limit);
 	}
 
 	close(): void {
