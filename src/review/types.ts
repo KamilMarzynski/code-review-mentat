@@ -1,4 +1,5 @@
 import type { BaseMessage } from "@langchain/core/messages";
+import type { MemorySearchResult } from "../memory/types";
 
 export type ReviewCommentStatus =
 	| "pending" // Not yet addressed
@@ -52,6 +53,7 @@ export type ContextGatherOutput = ContextGatherInput & {
 
 export type ReviewInput = {
 	context?: string;
+	memories?: MemorySearchResult[];
 	editedFiles: string[];
 	commits: string[];
 	diff: string;

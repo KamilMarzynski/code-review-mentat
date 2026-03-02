@@ -223,11 +223,36 @@ export class CodeReviewer {
 	private buildPrompt(input: ReviewInput): string {
 		return loadPrompt(CodeReviewer.PROMPT_CONFIG, {
 			contextGuidance: this.buildContextGuidance(input.context),
+			memoriesGuidance: this.buildMemoriesGuidance(input.memories),
 			editedFilesCount: String(input.editedFiles.length),
 			editedFilesList: input.editedFiles.map((f) => `- ${f}`).join("\n"),
 			commitsList: input.commits.map((c) => `- ${c}`).join("\n"),
 			diff: input.diff,
 		});
+	}
+
+	// Note: must not return a trailing newline — the blank line in the prompt template acts as separator.
+	private buildMemoriesGuidance(
+		memories: ReviewInput["memories"],
+	): string {
+		if (!memories || memories.length === 0) {
+			return "";
+		}
+
+		const memoriesList = memories
+			.map(
+				(m, i) =>
+					`${i + 1}. [${m.severity}] ${m.situation}\n   Lesson: ${m.lesson}`,
+			)
+			.join("\n");
+
+		return [
+			"## Past Review Memories",
+			"The following lessons were learned from previous code reviews of similar code.",
+			"Use them to inform your review — check if the same patterns or issues appear in this PR:",
+			"",
+			memoriesList,
+		].join("\n");
 	}
 
 	// Note: must not return a trailing newline — the blank line in the prompt template acts as separator.
