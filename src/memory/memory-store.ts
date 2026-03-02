@@ -74,7 +74,14 @@ export class MemoryStore {
 				doc.severity,
 				doc.createdAt,
 			);
-			insertVec.run(doc.id, new Uint8Array(doc.embedding.buffer));
+			insertVec.run(
+				doc.id,
+				new Uint8Array(
+					doc.embedding.buffer,
+					doc.embedding.byteOffset,
+					doc.embedding.byteLength,
+				),
+			);
 		});
 
 		transaction();

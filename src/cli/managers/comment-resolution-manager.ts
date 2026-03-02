@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
+import * as clack from "@clack/prompts";
 import type LocalCache from "../../cache/local-cache";
 import type { MemoryService } from "../../memory/memory-service";
 import type {
@@ -9,7 +10,7 @@ import type {
 import type { CodeContextReader } from "../../ui/code-context-reader";
 import type { UILogger } from "../../ui/logger";
 import { theme } from "../../ui/theme";
-import { promptCommentAction, promptOptionalNotes } from "../cli-prompts";
+import { promptCommentAction } from "../cli-prompts";
 import type { HandleCommentsResult } from "../types";
 
 /**
@@ -191,9 +192,24 @@ export class CommentResolutionManager {
 				// Handle user action
 				switch (action) {
 					case "create_memory": {
-						this.ui.info(theme.accent("Creating memory from comment..."));
+						const notesResponse = await clack.text({
+							message:
+								"Any optional context/notes? (Enter to skip, Ctrl+C to cancel)",
+							placeholder: 'e.g., "This applies to all async handlers"',
+						});
 
-						const additionalContext = await promptOptionalNotes();
+						if (clack.isCancel(notesResponse)) {
+							this.ui.logStep(theme.muted("Memory creation cancelled"));
+							break;
+						}
+
+						const additionalContext =
+							typeof notesResponse === "string" &&
+							notesResponse.trim().length > 0
+								? notesResponse.trim()
+								: undefined;
+
+						this.ui.info(theme.accent("Creating memory from comment..."));
 
 						try {
 							const result = await this.memoryService.createMemory({

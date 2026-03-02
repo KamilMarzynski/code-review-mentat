@@ -77,12 +77,11 @@ const main = async () => {
 	const ui = new UILogger();
 	const codeContextReader = new CodeContextReader();
 
-	// Initialize memory service for storing review insights
+	// Memory service for storing review insights (lazy-initialized on first use)
 	const memoryService = new MemoryService({
 		dbPath: join(homedir(), ".config", "crm", "memories.sqlite"),
 		openRouterApiKey: OPENROUTER_API_KEY,
 	});
-	await memoryService.initialize();
 
 	// Initialize LangChain model with OpenRouter (OpenAI-compatible API)
 	const model = new ChatOpenAI({

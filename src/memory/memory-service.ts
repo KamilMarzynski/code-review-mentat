@@ -13,23 +13,30 @@ import type {
 export class MemoryService {
 	private llm: LLMClient;
 	private embedder: Embedder;
-	private store: MemoryStore;
+	private store: MemoryStore | null = null;
+	private initialized = false;
+	private config: MemoryServiceConfig;
 
 	constructor(config: MemoryServiceConfig) {
+		this.config = config;
 		this.llm = new LLMClient(
 			config.openRouterApiKey,
 			config.model ?? "anthropic/claude-haiku-4-5",
 		);
 		this.embedder = new Embedder(config.embeddingModel);
-		this.store = new MemoryStore(config.dbPath);
 	}
 
-	async initialize(): Promise<void> {
+	private async ensureInitialized(): Promise<void> {
+		if (this.initialized) return;
 		await this.embedder.initialize();
+		this.store = new MemoryStore(this.config.dbPath);
 		this.store.initialize(this.embedder.getDimensions());
+		this.initialized = true;
 	}
 
 	async createMemory(input: CreateMemoryInput): Promise<CreateMemoryResult> {
+		await this.ensureInitialized();
+
 		const additionalContext = input.additionalContext ?? "None provided";
 
 		const situationPrompt = loadPrompt(
@@ -63,7 +70,11 @@ export class MemoryService {
 		const embedding = await this.embedder.embed(situation);
 
 		const id = randomUUID();
-		this.store.insert({
+		const store = this.store;
+		if (!store) {
+			throw new Error("MemoryStore not initialized");
+		}
+		store.insert({
 			id,
 			situation,
 			lesson,
@@ -79,6 +90,6 @@ export class MemoryService {
 	}
 
 	close(): void {
-		this.store.close();
+		this.store?.close();
 	}
 }
