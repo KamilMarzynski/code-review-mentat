@@ -52,6 +52,10 @@ export class MemoryStore {
 		`);
 	}
 
+	private toBytes(embedding: Float32Array): Uint8Array {
+		return new Uint8Array(embedding.buffer, embedding.byteOffset, embedding.byteLength);
+	}
+
 	insert(doc: MemoryDocument): void {
 		const insertMemory = this.db.prepare(`
 			INSERT INTO memories (id, situation, lesson, file_extension, project_name, file, severity, created_at)
@@ -74,14 +78,7 @@ export class MemoryStore {
 				doc.severity,
 				doc.createdAt,
 			);
-			insertVec.run(
-				doc.id,
-				new Uint8Array(
-					doc.embedding.buffer,
-					doc.embedding.byteOffset,
-					doc.embedding.byteLength,
-				),
-			);
+			insertVec.run(doc.id, this.toBytes(doc.embedding));
 		});
 
 		transaction();
@@ -100,13 +97,7 @@ export class MemoryStore {
 			LIMIT ?
 		`);
 
-		const embeddingBytes = new Uint8Array(
-			embedding.buffer,
-			embedding.byteOffset,
-			embedding.byteLength,
-		);
-
-		const rows = stmt.all(embeddingBytes, options.maxDistance, limit) as Array<{
+		const rows = stmt.all(this.toBytes(embedding), options.maxDistance, limit) as Array<{
 			id: string;
 			situation: string;
 			lesson: string;
