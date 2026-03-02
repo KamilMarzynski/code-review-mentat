@@ -31,3 +31,27 @@ export type CreateMemoryResult = {
 	situation: string;
 	lesson: string;
 };
+
+export type MemorySearchOptions = {
+	maxDistance: number;
+	limit?: number;
+};
+
+export type MemorySearchResult = {
+	id: string;
+	situation: string;
+	lesson: string;
+	fileExtension: string;
+	projectName: string | null;
+	severity: string;
+	distance: number;
+};
+
+export type MemoryQueryInput = {
+	context?: string;
+	editedFiles: string[];
+	commits: string[];
+	diff: string;
+	sourceBranch: string;
+	targetBranch: string;
+};
