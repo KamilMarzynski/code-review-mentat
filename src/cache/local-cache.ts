@@ -10,6 +10,7 @@ import {
 } from "node:fs";
 import { join } from "node:path";
 import envPaths from "env-paths";
+import type { MemorySearchResult } from "../memory/types";
 import type { ReviewComment, StoredReviewComment } from "../review/types";
 
 /**
@@ -34,6 +35,8 @@ export type CachedContext = {
 	};
 	comments?: StoredReviewComment[];
 	reviewedAt?: string;
+	memories?: MemorySearchResult[];
+	memoriesRetrievedAt?: string;
 };
 
 /**
@@ -260,6 +263,62 @@ export default class LocalCache {
 		} catch {
 			return null;
 		}
+	}
+
+	/**
+	 * Get cached memories for this MR (null if not retrieved yet)
+	 */
+	getMemories(input: {
+		mrNumber?: string;
+		sourceBranch: string;
+		targetBranch: string;
+	}): MemorySearchResult[] | null {
+		const key = this.getCacheKey(input);
+		const cachePath = this.getCachePath(key);
+
+		if (!existsSync(cachePath)) {
+			return null;
+		}
+
+		try {
+			const cached: CachedContext = JSON.parse(
+				readFileSync(cachePath, "utf-8"),
+			);
+			return cached.memories ?? null;
+		} catch {
+			return null;
+		}
+	}
+
+	/**
+	 * Save retrieved memories for this MR
+	 */
+	saveMemories(
+		input: {
+			mrNumber?: string;
+			sourceBranch: string;
+			targetBranch: string;
+		},
+		memories: MemorySearchResult[],
+	): void {
+		const key = this.getCacheKey(input);
+		const cachePath = this.getCachePath(key);
+
+		let cached: CachedContext;
+		if (existsSync(cachePath)) {
+			try {
+				cached = JSON.parse(readFileSync(cachePath, "utf-8"));
+			} catch {
+				return; // Don't overwrite if we can't parse
+			}
+		} else {
+			return; // No cache file exists — nothing to attach memories to
+		}
+
+		cached.memories = memories;
+		cached.memoriesRetrievedAt = new Date().toISOString();
+
+		writeFileSync(cachePath, JSON.stringify(cached, null, 2), "utf-8");
 	}
 
 	/**
