@@ -1,7 +1,7 @@
 import { Database } from "bun:sqlite";
 import { existsSync, mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
-import type { MemoryDocument } from "./types";
+import type { MemoryDocument, MemorySearchOptions, MemorySearchResult } from "./types";
 
 Database.setCustomSQLite("/opt/homebrew/opt/sqlite/lib/libsqlite3.dylib");
 
@@ -85,6 +85,46 @@ export class MemoryStore {
 		});
 
 		transaction();
+	}
+
+	search(embedding: Float32Array, options: MemorySearchOptions): MemorySearchResult[] {
+		const limit = options.limit ?? 10;
+
+		const stmt = this.db.prepare(`
+			SELECT m.id, m.situation, m.lesson, m.file_extension, m.project_name, m.severity, v.distance
+			FROM memories_vec v
+			JOIN memories m ON m.id = v.id
+			WHERE v.embedding MATCH ?
+				AND v.distance <= ?
+			ORDER BY v.distance
+			LIMIT ?
+		`);
+
+		const embeddingBytes = new Uint8Array(
+			embedding.buffer,
+			embedding.byteOffset,
+			embedding.byteLength,
+		);
+
+		const rows = stmt.all(embeddingBytes, options.maxDistance, limit) as Array<{
+			id: string;
+			situation: string;
+			lesson: string;
+			file_extension: string;
+			project_name: string | null;
+			severity: string;
+			distance: number;
+		}>;
+
+		return rows.map((row) => ({
+			id: row.id,
+			situation: row.situation,
+			lesson: row.lesson,
+			fileExtension: row.file_extension,
+			projectName: row.project_name,
+			severity: row.severity,
+			distance: row.distance,
+		}));
 	}
 
 	close(): void {
