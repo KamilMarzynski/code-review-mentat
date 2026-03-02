@@ -63,6 +63,7 @@ describe("PostActionHandler", () => {
 			acceptedCount: 0,
 			fixedCount: 0,
 			rejectedCount: 0,
+			hasMemories: false,
 			hasRemoteComments: false,
 			remoteCommentsCount: 0,
 			currentCommit: "abc123",

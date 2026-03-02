@@ -39,6 +39,9 @@ export interface WorkflowState {
 	fixedCount: number;
 	rejectedCount: number;
 
+	// Memory state
+	hasMemories: boolean;
+
 	// Future: Remote comments state
 	hasRemoteComments: boolean;
 	remoteCommentsCount: number;
