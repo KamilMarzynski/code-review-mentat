@@ -26,6 +26,47 @@ type CreatePullRequestCommentAnchor = {
 	line?: number;
 };
 
+type BitbucketRef = {
+	displayId: string;
+	latestCommit: string;
+};
+
+type BitbucketPullRequest = {
+	id: number;
+	title: string;
+	description: string;
+	fromRef: BitbucketRef;
+	toRef: BitbucketRef;
+};
+
+type BitbucketPagedResponse<T> = {
+	values: T[];
+	size: number;
+	isLastPage: boolean;
+};
+
+type BitbucketCommit = {
+	message: string;
+};
+
+type BitbucketCommentResponse = {
+	id: number;
+};
+
+type CreatePullRequestCommentBody = {
+	text: string;
+	severity: string;
+	version: number;
+	threadResolved: boolean;
+	parent?: { id: number };
+	anchor?: {
+		path: string;
+		line?: number;
+		lineType?: LineType;
+		fileType?: FileType;
+	};
+};
+
 export default class BitbucketServerGitProvider implements GitProvider {
 	name = "Bitbucket Server";
 
@@ -53,20 +94,21 @@ export default class BitbucketServerGitProvider implements GitProvider {
 			);
 		}
 
-		const data: any = await response.json();
+		const data =
+			(await response.json()) as BitbucketPagedResponse<BitbucketPullRequest>;
 
 		return data.values.map(
-			(prObject: unknown): PullRequest => ({
-				id: (prObject as any).id,
-				title: (prObject as any).title,
-				description: (prObject as any).description,
+			(pr): PullRequest => ({
+				id: pr.id,
+				title: pr.title,
+				description: pr.description,
 				source: {
-					name: (prObject as any).fromRef?.displayId,
-					commitHash: (prObject as any).fromRef?.latestCommit,
+					name: pr.fromRef?.displayId,
+					commitHash: pr.fromRef?.latestCommit,
 				},
 				target: {
-					name: (prObject as any).toRef?.displayId,
-					commitHash: (prObject as any).toRef?.latestCommit,
+					name: pr.toRef?.displayId,
+					commitHash: pr.toRef?.latestCommit,
 				},
 			}),
 		);
@@ -86,8 +128,9 @@ export default class BitbucketServerGitProvider implements GitProvider {
 			);
 		}
 
-		const data: any = await response.json();
-		return data.values.map((commit: any) => commit.message);
+		const data =
+			(await response.json()) as BitbucketPagedResponse<BitbucketCommit>;
+		return data.values.map((commit) => commit.message);
 	}
 
 	async createPullRequestComment(
@@ -99,7 +142,7 @@ export default class BitbucketServerGitProvider implements GitProvider {
 		}
 
 		const url = this.buildPullRequestCommentsUrl(pr);
-		const body: any = {
+		const body: CreatePullRequestCommentBody = {
 			text: comment.text,
 			severity: comment.severity === "risk" ? "BLOCKER" : "NORMAL",
 			version: 1,
@@ -137,7 +180,7 @@ export default class BitbucketServerGitProvider implements GitProvider {
 			);
 		}
 
-		const data: any = await response.json();
+		const data = (await response.json()) as BitbucketCommentResponse;
 
 		return {
 			id: data.id,
