@@ -1,4 +1,9 @@
-import { query } from "@anthropic-ai/claude-agent-sdk";
+import {
+	type PermissionMode,
+	query,
+	type SDKMessage,
+	type SDKResultMessage,
+} from "@anthropic-ai/claude-agent-sdk";
 
 export type ClaudeErrorType =
 	| "billing_error"
@@ -12,16 +17,16 @@ export type ClaudeErrorType =
 export type ClaudeError = {
 	type: ClaudeErrorType;
 	message: string;
-	originalError?: any;
+	originalError?: unknown;
 };
 
-export type ClaudeQueryResult<T = any> =
-	| { success: true; data: T; messages: any[] }
-	| { success: false; error: ClaudeError; messages: any[] };
+export type ClaudeQueryResult<T = unknown> =
+	| { success: true; data: T; messages: SDKMessage[] }
+	| { success: false; error: ClaudeError; messages: SDKMessage[] };
 
-type MessageHandler = (msg: any) => void | Promise<void>;
+type MessageHandler = (msg: SDKMessage) => void | Promise<void>;
 type FreeFormMessageHandler = (
-	msg: any,
+	msg: SDKMessage,
 ) => Promise<"continue" | "stop"> | "continue" | "stop";
 
 /**
@@ -47,10 +52,10 @@ export class ClaudeQueryExecutor {
 		systemPromptAppend?: string;
 		allowedTools?: string[];
 		disallowedTools?: string[];
-		permissionMode?: string;
+		permissionMode?: PermissionMode;
 		canUseTool?: (
 			toolName: string,
-			input: any,
+			input: Record<string, unknown>,
 		) => Promise<
 			| { behavior: "allow"; updatedInput: Record<string, unknown> }
 			| {
@@ -80,14 +85,14 @@ export class ClaudeQueryExecutor {
 				allowedTools: config.allowedTools,
 				disallowedTools: config.disallowedTools,
 				executable: "node",
-				permissionMode: (config.permissionMode as any) || "default",
+				permissionMode: config.permissionMode || "default",
 				canUseTool: config.canUseTool,
 			},
 		});
 
-		const messages: any[] = [];
+		const messages: SDKMessage[] = [];
 		let errorDetected: ClaudeError | null = null;
-		let finalResult: any | null = null;
+		let finalResult: SDKResultMessage | null = null;
 
 		try {
 			for await (const msg of q) {
@@ -193,7 +198,7 @@ export class ClaudeQueryExecutor {
 		systemPromptAppend?: string;
 		allowedTools?: string[];
 		disallowedTools?: string[];
-		permissionMode?: string;
+		permissionMode?: PermissionMode;
 		onMessage: FreeFormMessageHandler;
 	}): Promise<
 		ClaudeQueryResult<{
@@ -216,11 +221,11 @@ export class ClaudeQueryExecutor {
 				allowedTools: config.allowedTools,
 				disallowedTools: config.disallowedTools,
 				executable: "node",
-				permissionMode: (config.permissionMode as any) || "default",
+				permissionMode: config.permissionMode || "default",
 			},
 		});
 
-		const messages: any[] = [];
+		const messages: SDKMessage[] = [];
 		let errorDetected: ClaudeError | null = null;
 		let userRequestedStop = false;
 
@@ -290,12 +295,24 @@ export class ClaudeQueryExecutor {
 	 * Detect errors from message content.
 	 * Checks for billing, auth, rate limit, and API errors.
 	 */
-	private detectError(msg: any): ClaudeError | null {
+	private detectError(msg: SDKMessage): ClaudeError | null {
+		if (msg.type !== "assistant") {
+			return null;
+		}
+
 		// Check for explicit error field
 		if (msg.error) {
-			const errorType = msg.error as string;
+			const errorType = msg.error;
+			const content = msg.message?.content;
 			const errorMessage =
-				msg.message?.content?.[0]?.text || msg.error || "Unknown error";
+				(Array.isArray(content) &&
+					content[0] &&
+					"type" in content[0] &&
+					content[0].type === "text" &&
+					"text" in content[0] &&
+					content[0].text) ||
+				errorType ||
+				"Unknown error";
 
 			switch (errorType) {
 				case "billing_error":
@@ -304,27 +321,21 @@ export class ClaudeQueryExecutor {
 						message: errorMessage,
 						originalError: msg,
 					};
-				case "authentication_error":
+				case "authentication_failed":
 					return {
 						type: "authentication_error",
 						message: errorMessage,
 						originalError: msg,
 					};
-				case "rate_limit_error":
+				case "rate_limit":
 					return {
 						type: "rate_limit_error",
 						message: errorMessage,
 						originalError: msg,
 					};
-				case "api_error":
+				case "server_error":
 					return {
 						type: "api_error",
-						message: errorMessage,
-						originalError: msg,
-					};
-				case "overloaded_error":
-					return {
-						type: "overloaded_error",
 						message: errorMessage,
 						originalError: msg,
 					};
@@ -338,20 +349,18 @@ export class ClaudeQueryExecutor {
 		}
 
 		// Check for billing error in message content
-		if (msg.type === "assistant" && msg.message?.content) {
-			const content = msg.message.content;
-			if (Array.isArray(content)) {
-				for (const block of content) {
-					if (
-						block.type === "text" &&
-						block.text?.includes("Credit balance is too low")
-					) {
-						return {
-							type: "billing_error",
-							message: "Credit balance is too low",
-							originalError: msg,
-						};
-					}
+		const content = msg.message?.content;
+		if (Array.isArray(content)) {
+			for (const block of content) {
+				if (
+					block.type === "text" &&
+					block.text?.includes("Credit balance is too low")
+				) {
+					return {
+						type: "billing_error",
+						message: "Credit balance is too low",
+						originalError: msg,
+					};
 				}
 			}
 		}
@@ -362,7 +371,7 @@ export class ClaudeQueryExecutor {
 	/**
 	 * Check if a message is synthetic (injected by SDK, not from Claude).
 	 */
-	private isSyntheticMessage(msg: any): boolean {
-		return msg.isSynthetic === true;
+	private isSyntheticMessage(msg: SDKMessage): boolean {
+		return msg.type === "user" && msg.isSynthetic === true;
 	}
 }

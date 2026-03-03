@@ -82,12 +82,13 @@ export class CodeReviewer {
 					// Track tool usage for verification
 					toolsUsed.push({
 						tool: toolName,
-						input:
+						input: String(
 							input?.file_path ||
-							input?.path ||
-							input?.pattern ||
-							input?.query ||
-							"",
+								input?.path ||
+								input?.pattern ||
+								input?.query ||
+								"",
+						),
 					});
 					return { behavior: "allow", updatedInput: input };
 				},
@@ -129,7 +130,10 @@ export class CodeReviewer {
 				error: {
 					name: result.error.type,
 					message: result.error.message,
-					stack: result.error.originalError?.stack,
+					stack:
+						result.error.originalError instanceof Error
+							? result.error.originalError.stack
+							: undefined,
 				},
 				metadata: {
 					timestamp: Date.now(),
