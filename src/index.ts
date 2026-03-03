@@ -13,7 +13,9 @@ import { CLIOrchestrator } from "./cli/orchestrator";
 import GitOperations from "./git/operations";
 import { GitProviderFactory } from "./git-providers/factory";
 import { createMCPClient, getMCPTools } from "./mcp/client";
+import { LLMClient } from "./memory/llm-client";
 import { MemoryService } from "./memory/memory-service";
+import { MemoryQueryGenerator } from "./memory/query-generator";
 import { CodeReviewer } from "./review/code-reviewer";
 import { CommentFixer } from "./review/comment-fixer";
 import { ContextGathererFactory } from "./review/context-gatherer-factory";
@@ -83,6 +85,13 @@ const main = async () => {
 		openRouterApiKey: OPENROUTER_API_KEY,
 	});
 
+	// Sonnet LLM client for memory query generation
+	const sonnetLLMClient = new LLMClient(
+		OPENROUTER_API_KEY,
+		"anthropic/claude-sonnet-4.6",
+	);
+	const memoryQueryGenerator = new MemoryQueryGenerator(sonnetLLMClient);
+
 	// Initialize LangChain model with OpenRouter (OpenAI-compatible API)
 	const model = new ChatOpenAI({
 		model: "anthropic/claude-sonnet-4.6",
@@ -137,6 +146,8 @@ const main = async () => {
 		contextGathererFactory,
 		codeReviewer,
 		cache,
+		memoryService,
+		memoryQueryGenerator,
 	);
 	const postActionHandler = new PostActionHandler(stateManager);
 
