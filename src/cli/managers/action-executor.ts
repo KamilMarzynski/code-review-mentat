@@ -1,5 +1,7 @@
 import type LocalCache from "../../cache/local-cache";
 import { getPRKey, type PullRequest } from "../../git-providers/types";
+import type { MemoryQueryGenerator } from "../../memory/query-generator";
+import type { MemoryService } from "../../memory/memory-service";
 import type { CodeReviewer } from "../../review/code-reviewer";
 import type { ContextGatherer } from "../../review/context-gatherer";
 import type { ContextGathererFactory } from "../../review/context-gatherer-factory";
@@ -39,6 +41,8 @@ export class ActionExecutor {
 		private contextGathererFactory: ContextGathererFactory,
 		private codeReviewer: CodeReviewer,
 		private cache: LocalCache,
+		private memoryService: MemoryService,
+		private memoryQueryGenerator: MemoryQueryGenerator,
 	) {}
 
 	/**
@@ -159,6 +163,87 @@ export class ActionExecutor {
 	}
 
 	/**
+	 * Retrieve past review memories from vector database
+	 *
+	 * Short-circuits if memories already cached for this PR.
+	 * Generates search queries via LLM, then searches vector DB.
+	 */
+	async executeRetrieveMemories(pr: PullRequest): Promise<void> {
+		const cacheInput = {
+			sourceBranch: pr.source.name,
+			targetBranch: pr.target.name,
+		};
+
+		// Short-circuit if memories already cached
+		const cached = this.cache.getMemories(cacheInput);
+		if (cached !== null) {
+			if (cached.length > 0) {
+				ui.info(
+					theme.muted(
+						`Using ${cached.length} cached memory/memories from previous retrieval`,
+					),
+				);
+			}
+			return;
+		}
+
+		const spinner = ui.spinner();
+
+		try {
+			spinner.start(theme.accent("Retrieving past review memories"));
+
+			// Fetch PR metadata for query generation
+			const commitMessages = await this.prWorkflow.fetchCommitHistory(pr);
+			const { fullDiff, editedFiles } =
+				await this.prWorkflow.analyzeChanges(pr);
+
+			// Load context from cache (may be null if user skipped context gathering)
+			const cachedContext = this.cache.get(cacheInput);
+
+			// Generate search queries via LLM
+			const queries = await this.memoryQueryGenerator.generateQueries({
+				context: cachedContext ?? undefined,
+				editedFiles,
+				commits: commitMessages,
+				diff: fullDiff,
+				sourceBranch: pr.source.name,
+				targetBranch: pr.target.name,
+			});
+
+			// Search vector database
+			const memories = await this.memoryService.searchMemories(queries, {
+				maxDistance: 0.8,
+				limit: 10,
+			});
+
+			// Cache results (even if empty, to prevent re-querying)
+			this.cache.saveMemories(cacheInput, memories);
+
+			if (memories.length > 0) {
+				spinner.stop(
+					theme.success(
+						`✓ Found ${memories.length} relevant memory/memories from past reviews`,
+					),
+				);
+			} else {
+				spinner.stop(
+					theme.muted("No relevant memories found from past reviews"),
+				);
+			}
+		} catch (error) {
+			spinner.stop(
+				theme.warning(
+					"⚠ Memory retrieval failed (continuing without memories)",
+				),
+			);
+			ui.info(theme.muted(`   ${(error as Error).message}`));
+
+			// Cache empty array to prevent re-querying on failure
+			this.cache.saveMemories(cacheInput, []);
+		}
+	}
+
+	/**
 	 * Extract a clean spinner message from a display message
 	 * Removes emojis and extracts the action phrase
 	 */
@@ -220,9 +305,13 @@ export class ActionExecutor {
 			};
 			const cachedContext = this.cache.get(cacheInput);
 
+			// Load memories from cache if available
+			const memories = this.cache.getMemories(cacheInput) ?? undefined;
+
 			// Build review input
 			const reviewInput = {
 				context: cachedContext || undefined,
+				memories,
 				editedFiles,
 				commits: commitMessages,
 				diff: fullDiff,
