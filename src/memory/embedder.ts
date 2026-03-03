@@ -1,8 +1,10 @@
+import type { FeatureExtractionPipeline } from "@xenova/transformers";
+
 const DEFAULT_MODEL = "mixedbread-ai/mxbai-embed-large-v1";
 const DIMENSIONS = 1024;
 
 export class Embedder {
-	private pipeline: any | null = null;
+	private pipeline: FeatureExtractionPipeline | null = null;
 
 	constructor(private modelName: string = DEFAULT_MODEL) {}
 
@@ -21,7 +23,9 @@ export class Embedder {
 			normalize: true,
 		});
 
-		return new Float32Array(output.data);
+		// Feature extraction with normalize returns Float32Array data,
+		// but Tensor.data is typed as a broad DataArray union
+		return new Float32Array(output.data as ArrayLike<number>);
 	}
 
 	getDimensions(): number {
