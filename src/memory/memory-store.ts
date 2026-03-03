@@ -1,7 +1,11 @@
 import { Database } from "bun:sqlite";
 import { existsSync, mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
-import type { MemoryDocument, MemorySearchOptions, MemorySearchResult } from "./types";
+import type {
+	MemoryDocument,
+	MemorySearchOptions,
+	MemorySearchResult,
+} from "./types";
 
 Database.setCustomSQLite("/opt/homebrew/opt/sqlite/lib/libsqlite3.dylib");
 
@@ -53,7 +57,11 @@ export class MemoryStore {
 	}
 
 	private toBytes(embedding: Float32Array): Uint8Array {
-		return new Uint8Array(embedding.buffer, embedding.byteOffset, embedding.byteLength);
+		return new Uint8Array(
+			embedding.buffer,
+			embedding.byteOffset,
+			embedding.byteLength,
+		);
 	}
 
 	insert(doc: MemoryDocument): void {
@@ -84,7 +92,10 @@ export class MemoryStore {
 		transaction();
 	}
 
-	search(embedding: Float32Array, options: MemorySearchOptions): MemorySearchResult[] {
+	search(
+		embedding: Float32Array,
+		options: MemorySearchOptions,
+	): MemorySearchResult[] {
 		const limit = options.limit ?? 10;
 
 		const stmt = this.db.prepare(`
@@ -97,7 +108,11 @@ export class MemoryStore {
 			LIMIT ?
 		`);
 
-		const rows = stmt.all(this.toBytes(embedding), options.maxDistance, limit) as Array<{
+		const rows = stmt.all(
+			this.toBytes(embedding),
+			options.maxDistance,
+			limit,
+		) as Array<{
 			id: string;
 			situation: string;
 			lesson: string;

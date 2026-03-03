@@ -1,7 +1,7 @@
 import type LocalCache from "../../cache/local-cache";
 import { getPRKey, type PullRequest } from "../../git-providers/types";
-import type { MemoryQueryGenerator } from "../../memory/query-generator";
 import type { MemoryService } from "../../memory/memory-service";
+import type { MemoryQueryGenerator } from "../../memory/query-generator";
 import type { CodeReviewer } from "../../review/code-reviewer";
 import type { ContextGatherer } from "../../review/context-gatherer";
 import type { ContextGathererFactory } from "../../review/context-gatherer-factory";
@@ -120,7 +120,9 @@ export class ActionExecutor {
 
 						case "context_success":
 							if (!hasError) {
-								spinner.stop(theme.success("✓ Deep context synthesis complete"));
+								spinner.stop(
+									theme.success("✓ Deep context synthesis complete"),
+								);
 								spinnerStarted = false;
 							}
 							break;

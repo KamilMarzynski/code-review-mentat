@@ -1,6 +1,6 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
-import { join } from "node:path";
 import { homedir } from "node:os";
+import { join } from "node:path";
 
 export type PromptConfig = {
 	name: string;
@@ -26,7 +26,7 @@ export function createPromptLoader(baseDir: string) {
 		const versions = files
 			.map((f) => f.match(/^v(\d+)\.md$/))
 			.filter((m): m is RegExpMatchArray => m !== null)
-			.map((m) => parseInt(m[1], 10))
+			.map((m) => parseInt(m[1] as string, 10))
 			.filter((v) => Number.isSafeInteger(v));
 
 		if (versions.length === 0) {
@@ -41,13 +41,13 @@ export function createPromptLoader(baseDir: string) {
 	}
 
 	function interpolate(content: string, variables: PromptVariables): string {
-		return content.replace(/\{\{(\w+)\}\}/g, (_, key) => {
+		return content.replace(/\{\{(\w+)\}\}/g, (_, key: string) => {
 			if (!(key in variables)) {
 				throw new Error(
 					`Prompt placeholder {{${key}}} not supplied in variables`,
 				);
 			}
-			return variables[key];
+			return variables[key] as string;
 		});
 	}
 

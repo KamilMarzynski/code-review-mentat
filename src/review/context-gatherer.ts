@@ -217,7 +217,7 @@ Edited Files: ${input.editedFiles.join(", ")}`);
 			yield* this.getToolCallReasoningEvents(msg);
 		}
 
-		if (msg.tool_calls.length > 0) {
+		if (msg.tool_calls && msg.tool_calls.length > 0) {
 			yield* this.getToolCallEvents(msg.tool_calls);
 		}
 	}
