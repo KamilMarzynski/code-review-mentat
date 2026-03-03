@@ -1,3 +1,7 @@
+import type {
+	BetaTextBlock,
+	BetaToolUseBlock,
+} from "@anthropic-ai/sdk/resources/beta/messages/messages";
 import { loadPrompt, type PromptConfig } from "../prompts/loader";
 import { ClaudeQueryExecutor } from "./claude-query-executor";
 import type { ReviewComment } from "./types";
@@ -170,7 +174,7 @@ export class CommentFixer {
 							) {
 								// Text = thinking
 								if (block.type === "text" && "text" in block) {
-									const text = (block as any).text.trim();
+									const text = (block as BetaTextBlock).text.trim();
 									if (text) {
 										finalThoughts = text;
 										const decision = await onProgress({
@@ -184,14 +188,15 @@ export class CommentFixer {
 
 								// Tool use
 								if (block.type === "tool_use" && "name" in block) {
-									const toolBlock = block as any;
+									const toolBlock = block as BetaToolUseBlock;
 									const toolName = toolBlock.name;
+									const input = this.getToolInput(toolBlock);
 									toolCallCount++;
-									// ✅ Checkpoint BEFORE Edit calls - let user preview what's about to change
+									// Checkpoint BEFORE Edit calls - let user preview what's about to change
 									if (toolName === "Edit") {
 										const preEditDecision = await onProgress({
 											type: "checkpoint",
-											message: `About to edit: ${toolBlock.input?.path || "file"}`,
+											message: `About to edit: ${(input.path as string) || "file"}`,
 											toolName,
 											toolCount: toolCallCount,
 										});
@@ -201,7 +206,7 @@ export class CommentFixer {
 									}
 									const decision = await onProgress({
 										type: "tool_use",
-										message: this.describeToolUse(toolName, toolBlock.input),
+										message: this.describeToolUse(toolName, input),
 										toolName,
 										toolCount: toolCallCount,
 									});
@@ -210,8 +215,8 @@ export class CommentFixer {
 										return "stop";
 									}
 
-									if (toolName === "Edit" && toolBlock.input?.path) {
-										filesModified.add(toolBlock.input.path);
+									if (toolName === "Edit" && input.path) {
+										filesModified.add(input.path as string);
 									}
 
 									// Checkpoint every 10 tool calls
@@ -241,8 +246,11 @@ export class CommentFixer {
 								block !== null &&
 								"type" in block
 							) {
-								if ((block as any).type === "tool_result") {
-									const resultBlock = block as any;
+								if ("type" in block && block.type === "tool_result") {
+									const resultBlock = block as {
+										type: "tool_result";
+										content?: string | unknown[];
+									};
 									const resultText =
 										typeof resultBlock.content === "string"
 											? resultBlock.content
@@ -281,16 +289,25 @@ export class CommentFixer {
 		};
 	}
 
-	private describeToolUse(toolName: string, input: any): string {
+	private getToolInput(block: BetaToolUseBlock): Record<string, unknown> {
+		return (
+			typeof block.input === "object" && block.input !== null ? block.input : {}
+		) as Record<string, unknown>;
+	}
+
+	private describeToolUse(
+		toolName: string,
+		input: Record<string, unknown>,
+	): string {
 		switch (toolName) {
 			case "Read":
-				return `Reading ${input.path || "file"}`;
+				return `Reading ${(input.path as string) || "file"}`;
 			case "Edit":
-				return `Editing ${input.path || "file"}`;
+				return `Editing ${(input.path as string) || "file"}`;
 			case "Grep":
-				return `Searching for "${input.pattern || "pattern"}"`;
+				return `Searching for "${(input.pattern as string) || "pattern"}"`;
 			case "Glob":
-				return `Finding files: ${input.pattern || "pattern"}`;
+				return `Finding files: ${(input.pattern as string) || "pattern"}`;
 			default:
 				return JSON.stringify(input);
 		}
