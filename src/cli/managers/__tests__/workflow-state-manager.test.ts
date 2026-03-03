@@ -34,7 +34,6 @@ describe("WorkflowStateManager", () => {
 			has: mock(() => false),
 			getMetadata: mock(() => null),
 			getComments: mock(async () => []),
-			getMemories: mock(() => null),
 		} as unknown as LocalCache;
 
 		stateManager = new WorkflowStateManager(mockCache);
@@ -57,7 +56,6 @@ describe("WorkflowStateManager", () => {
 				remoteCommentsCount: 0,
 				currentCommit: "abc123def456",
 				hasNewCommits: false,
-				hasMemories: false,
 			});
 		});
 
@@ -180,7 +178,7 @@ describe("WorkflowStateManager", () => {
 				acceptedCount: 0,
 				fixedCount: 0,
 				rejectedCount: 0,
-				hasMemories: false,
+
 				hasRemoteComments: false,
 				remoteCommentsCount: 0,
 				currentCommit: "abc123",
@@ -206,7 +204,7 @@ describe("WorkflowStateManager", () => {
 				acceptedCount: 0,
 				fixedCount: 0,
 				rejectedCount: 0,
-				hasMemories: false,
+
 				hasRemoteComments: false,
 				remoteCommentsCount: 0,
 				currentCommit: "abc123",
@@ -228,7 +226,7 @@ describe("WorkflowStateManager", () => {
 				acceptedCount: 0,
 				fixedCount: 0,
 				rejectedCount: 0,
-				hasMemories: false,
+
 				hasRemoteComments: false,
 				remoteCommentsCount: 0,
 				currentCommit: "abc123",
@@ -250,7 +248,7 @@ describe("WorkflowStateManager", () => {
 				acceptedCount: 0,
 				fixedCount: 0,
 				rejectedCount: 0,
-				hasMemories: false,
+
 				hasRemoteComments: false,
 				remoteCommentsCount: 0,
 				currentCommit: "abc123",
@@ -279,7 +277,7 @@ describe("WorkflowStateManager", () => {
 				acceptedCount: 2,
 				fixedCount: 0,
 				rejectedCount: 0,
-				hasMemories: false,
+
 				hasRemoteComments: false,
 				remoteCommentsCount: 0,
 				currentCommit: "abc123",
@@ -310,7 +308,7 @@ describe("WorkflowStateManager", () => {
 				acceptedCount: 0,
 				fixedCount: 0,
 				rejectedCount: 0,
-				hasMemories: false,
+
 				hasRemoteComments: false,
 				remoteCommentsCount: 0,
 				currentCommit: "abc123",
@@ -334,7 +332,7 @@ describe("WorkflowStateManager", () => {
 				acceptedCount: 0,
 				fixedCount: 0,
 				rejectedCount: 0,
-				hasMemories: false,
+
 				hasRemoteComments: false,
 				remoteCommentsCount: 0,
 				currentCommit: "abc123",
@@ -358,7 +356,7 @@ describe("WorkflowStateManager", () => {
 				acceptedCount: 0,
 				fixedCount: 0,
 				rejectedCount: 0,
-				hasMemories: false,
+
 				hasRemoteComments: false,
 				remoteCommentsCount: 0,
 				currentCommit: "abc123",
@@ -381,7 +379,7 @@ describe("WorkflowStateManager", () => {
 				acceptedCount: 3,
 				fixedCount: 0,
 				rejectedCount: 0,
-				hasMemories: false,
+
 				hasRemoteComments: false,
 				remoteCommentsCount: 0,
 				currentCommit: "abc123",
@@ -407,7 +405,7 @@ describe("WorkflowStateManager", () => {
 				acceptedCount: 1,
 				fixedCount: 0,
 				rejectedCount: 0,
-				hasMemories: false,
+
 				hasRemoteComments: false,
 				remoteCommentsCount: 0,
 				currentCommit: "abc123",
@@ -437,7 +435,7 @@ describe("WorkflowStateManager", () => {
 				acceptedCount: 0,
 				fixedCount: 0,
 				rejectedCount: 0,
-				hasMemories: false,
+
 				hasRemoteComments: false,
 				remoteCommentsCount: 0,
 				currentCommit: "abc123",

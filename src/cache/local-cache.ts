@@ -300,7 +300,7 @@ export default class LocalCache {
 			targetBranch: string;
 		},
 		memories: MemorySearchResult[],
-	): void {
+	): boolean {
 		const key = this.getCacheKey(input);
 		const cachePath = this.getCachePath(key);
 
@@ -309,16 +309,17 @@ export default class LocalCache {
 			try {
 				cached = JSON.parse(readFileSync(cachePath, "utf-8"));
 			} catch {
-				return; // Don't overwrite if we can't parse
+				return false; // Don't overwrite if we can't parse
 			}
 		} else {
-			return; // No cache file exists — nothing to attach memories to
+			return false; // No cache file exists — nothing to attach memories to
 		}
 
 		cached.memories = memories;
 		cached.memoriesRetrievedAt = new Date().toISOString();
 
 		writeFileSync(cachePath, JSON.stringify(cached, null, 2), "utf-8");
+		return true;
 	}
 
 	/**

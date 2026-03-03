@@ -275,7 +275,7 @@ describe("CLIOrchestrator Integration", () => {
 				acceptedCount: stateCallCount === 4 ? 1 : 0,
 				fixedCount: 0,
 				rejectedCount: 0,
-				hasMemories: false,
+
 				hasRemoteComments: false,
 				remoteCommentsCount: 0,
 				currentCommit: "abc123",

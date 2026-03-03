@@ -79,7 +79,7 @@ describe("ActionExecutor", () => {
 		acceptedCount: 0,
 		fixedCount: 0,
 		rejectedCount: 0,
-		hasMemories: false,
+
 		hasRemoteComments: false,
 		remoteCommentsCount: 0,
 		currentCommit: "abc123def456",
@@ -180,6 +180,7 @@ describe("ActionExecutor", () => {
 			getComments: mock(async () => []),
 			getMemories: mock(() => null),
 			set: mock(() => {}),
+			saveMemories: mock(() => true),
 			setCacheMock: mock(() => {}),
 		} as unknown as LocalCache;
 

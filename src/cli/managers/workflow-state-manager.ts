@@ -59,10 +59,6 @@ export class WorkflowStateManager {
 			(c) => c.status === "rejected",
 		).length;
 
-		// Check memory state
-		const memories = this.cache.getMemories(cacheInput);
-		const hasMemories = memories !== null;
-
 		// Check for new commits since last context/review
 		const hasNewCommits = contextMeta
 			? contextMeta.gatheredFromCommit !== pr.source.commitHash
@@ -77,7 +73,6 @@ export class WorkflowStateManager {
 			acceptedCount,
 			fixedCount,
 			rejectedCount,
-			hasMemories,
 			hasRemoteComments: false, // Future feature
 			remoteCommentsCount: 0, // Future feature
 			currentCommit: pr.source.commitHash,

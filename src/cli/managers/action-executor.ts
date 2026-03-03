@@ -30,8 +30,16 @@ import type { PRWorkflowManager } from "./pr-workflow-manager";
  * Each method is self-contained and returns structured result objects
  * for use by the orchestrator or post-action handlers.
  */
+type PRMetadata = {
+	prKey: string;
+	commits: string[];
+	fullDiff: string;
+	editedFiles: string[];
+};
+
 export class ActionExecutor {
 	private contextGatherer: ContextGatherer | null = null;
+	private prMetadataCache: PRMetadata | null = null;
 
 	constructor(
 		private prWorkflow: PRWorkflowManager,
@@ -44,6 +52,21 @@ export class ActionExecutor {
 		private memoryService: MemoryService,
 		private memoryQueryGenerator: MemoryQueryGenerator,
 	) {}
+
+	/**
+	 * Fetch PR metadata (commits, diff, edited files) with per-PR memoization.
+	 * Avoids redundant git operations when multiple methods need the same data.
+	 */
+	private async getPRMetadata(pr: PullRequest): Promise<PRMetadata> {
+		const prKey = getPRKey(pr);
+		if (this.prMetadataCache?.prKey === prKey) {
+			return this.prMetadataCache;
+		}
+		const commits = await this.prWorkflow.fetchCommitHistory(pr);
+		const { fullDiff, editedFiles } = await this.prWorkflow.analyzeChanges(pr);
+		this.prMetadataCache = { prKey, commits, fullDiff, editedFiles };
+		return this.prMetadataCache;
+	}
 
 	/**
 	 * Execute context gathering for a pull request
@@ -64,11 +87,10 @@ export class ActionExecutor {
 			}
 
 			// Fetch commit history and edited files
-			const commitMessages = await this.prWorkflow.fetchCommitHistory(pr);
-			const { editedFiles } = await this.prWorkflow.analyzeChanges(pr);
+			const { commits, editedFiles } = await this.getPRMetadata(pr);
 
 			const contextInput = {
-				commits: commitMessages,
+				commits,
 				title: pr.title,
 				description: pr.description,
 				editedFiles,
@@ -194,10 +216,8 @@ export class ActionExecutor {
 		try {
 			spinner.start(theme.accent("Retrieving past review memories"));
 
-			// Fetch PR metadata for query generation
-			const commitMessages = await this.prWorkflow.fetchCommitHistory(pr);
-			const { fullDiff, editedFiles } =
-				await this.prWorkflow.analyzeChanges(pr);
+			// Fetch PR metadata for query generation (memoized)
+			const { commits, fullDiff, editedFiles } = await this.getPRMetadata(pr);
 
 			// Load context from cache (may be null if user skipped context gathering)
 			const cachedContext = this.cache.get(cacheInput);
@@ -206,7 +226,7 @@ export class ActionExecutor {
 			const queries = await this.memoryQueryGenerator.generateQueries({
 				context: cachedContext ?? undefined,
 				editedFiles,
-				commits: commitMessages,
+				commits,
 				diff: fullDiff,
 				sourceBranch: pr.source.name,
 				targetBranch: pr.target.name,
@@ -219,7 +239,12 @@ export class ActionExecutor {
 			});
 
 			// Cache results (even if empty, to prevent re-querying)
-			this.cache.saveMemories(cacheInput, memories);
+			const saved = this.cache.saveMemories(cacheInput, memories);
+			if (!saved) {
+				ui.info(
+					theme.muted("Could not cache memories (no cache file for this PR)"),
+				);
+			}
 
 			if (memories.length > 0) {
 				spinner.stop(
@@ -240,7 +265,7 @@ export class ActionExecutor {
 			);
 			ui.info(theme.muted(`   ${(error as Error).message}`));
 
-			// Cache empty array to prevent re-querying on failure
+			// Try to cache empty array to prevent re-querying on failure
 			this.cache.saveMemories(cacheInput, []);
 		}
 	}
@@ -293,12 +318,8 @@ export class ActionExecutor {
 		let spinnerStarted = false;
 
 		try {
-			// Fetch commit history
-			const commitMessages = await this.prWorkflow.fetchCommitHistory(pr);
-
-			// Analyze changes
-			const { fullDiff, editedFiles } =
-				await this.prWorkflow.analyzeChanges(pr);
+			// Fetch commit history and changes (memoized)
+			const { commits, fullDiff, editedFiles } = await this.getPRMetadata(pr);
 
 			// Load context from cache if available
 			const cacheInput = {
@@ -315,7 +336,7 @@ export class ActionExecutor {
 				context: cachedContext || undefined,
 				memories,
 				editedFiles,
-				commits: commitMessages,
+				commits,
 				diff: fullDiff,
 				sourceBranch: pr.source.name,
 				targetBranch: pr.target.name,
