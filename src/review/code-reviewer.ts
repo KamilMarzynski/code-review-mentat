@@ -236,9 +236,7 @@ export class CodeReviewer {
 	}
 
 	// Note: must not return a trailing newline — the blank line in the prompt template acts as separator.
-	private buildMemoriesGuidance(
-		memories: ReviewInput["memories"],
-	): string {
+	private buildMemoriesGuidance(memories: ReviewInput["memories"]): string {
 		if (!memories || memories.length === 0) {
 			return "";
 		}
