@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it, mock } from "bun:test";
 import type LocalCache from "../../../cache/local-cache";
 import type { PullRequest } from "../../../git-providers/types";
+import type { MemoryService } from "../../../memory/memory-service";
+import type { MemoryQueryGenerator } from "../../../memory/query-generator";
 import type { CodeReviewer } from "../../../review/code-reviewer";
 import type { ContextGatherer } from "../../../review/context-gatherer";
 import type { ContextGathererFactory } from "../../../review/context-gatherer-factory";
@@ -51,6 +53,8 @@ describe("ActionExecutor", () => {
 	let mockContextGathererFactory: ContextGathererFactory;
 	let mockCodeReviewer: CodeReviewer;
 	let mockCache: LocalCache;
+	let mockMemoryService: MemoryService;
+	let mockMemoryQueryGenerator: MemoryQueryGenerator;
 
 	// Sample pull request for testing
 	const samplePR: PullRequest = {
@@ -174,9 +178,19 @@ describe("ActionExecutor", () => {
 		mockCache = {
 			get: mock(() => undefined),
 			getComments: mock(async () => []),
+			getMemories: mock(() => null),
 			set: mock(() => {}),
 			setCacheMock: mock(() => {}),
 		} as unknown as LocalCache;
+
+		mockMemoryService = {
+			searchMemories: mock(async () => []),
+		} as unknown as MemoryService;
+
+		mockMemoryQueryGenerator = {
+			generateQueries: mock(async () => []),
+		} as unknown as MemoryQueryGenerator;
+
 		actionExecutor = new ActionExecutor(
 			mockPRWorkflow,
 			mockCommentResolution,
@@ -185,6 +199,8 @@ describe("ActionExecutor", () => {
 			mockContextGathererFactory,
 			mockCodeReviewer,
 			mockCache,
+			mockMemoryService,
+			mockMemoryQueryGenerator,
 		);
 	});
 

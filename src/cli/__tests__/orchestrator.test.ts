@@ -126,6 +126,7 @@ describe("CLIOrchestrator Integration", () => {
 
 		mockActionExecutor = {
 			executeGatherContext: mock(async () => {}),
+			executeRetrieveMemories: mock(async () => {}),
 			executeReview: mock(async () => ({
 				commentsCreated: 0,
 				hasErrors: false,
