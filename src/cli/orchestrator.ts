@@ -151,12 +151,15 @@ export class CLIOrchestrator {
 				break;
 
 			case "run_review":
+				await this.actionExecutor.executeRetrieveMemories(context.pr);
 				await this.actionExecutor.executeReview(context.pr);
 				break;
 
 			case "review_with_context":
 				// First gather context
 				await this.actionExecutor.executeGatherContext(context.pr);
+				// Then retrieve memories (uses context for better queries)
+				await this.actionExecutor.executeRetrieveMemories(context.pr);
 				// Then run review
 				await this.actionExecutor.executeReview(context.pr);
 				break;
