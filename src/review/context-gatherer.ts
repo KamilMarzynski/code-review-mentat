@@ -16,6 +16,10 @@ import type {
 	ContextGatherOutput,
 } from "./types";
 
+type LangGraphUpdateChunk = {
+	messages: unknown[];
+};
+
 export class ContextGatherer {
 	/**
 	 * Factory method that creates a {@link ContextGatherer} backed by a LangChain React agent
@@ -129,7 +133,9 @@ Edited Files: ${input.editedFiles.join(", ")}`);
 		);
 
 		for await (const chunk of stream) {
-			const [_, content] = Object.entries(chunk)[0] as any;
+			const entries = Object.entries(chunk);
+			if (entries.length === 0) continue;
+			const [, content] = entries[0] as [string, LangGraphUpdateChunk];
 			if (content.messages && Array.isArray(content.messages)) {
 				const raw = content.messages[content.messages.length - 1];
 				const message = this.deserializeMessage(raw);
