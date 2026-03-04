@@ -15,6 +15,9 @@ export class MemoryQueryGenerator {
 				diff: input.diff,
 				sourceBranch: input.sourceBranch,
 				targetBranch: input.targetBranch,
+				exampleSituations: this.formatExampleSituations(
+					input.exampleSituations,
+				),
 			},
 		);
 
@@ -24,6 +27,13 @@ export class MemoryQueryGenerator {
 		);
 
 		return this.parseQueries(response);
+	}
+
+	private formatExampleSituations(situations: string[] | undefined): string {
+		if (!situations || situations.length === 0) {
+			return "No examples available yet.";
+		}
+		return situations.map((s, i) => `${i + 1}. ${s}`).join("\n");
 	}
 
 	private parseQueries(response: string): string[] {

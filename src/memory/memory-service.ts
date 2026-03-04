@@ -28,16 +28,15 @@ export class MemoryService {
 		this.embedder = new Embedder(config.embeddingModel);
 	}
 
-	private async ensureInitialized(): Promise<void> {
+	private ensureInitialized(): void {
 		if (this.initialized) return;
-		await this.embedder.initialize();
 		this.store = new MemoryStore(this.config.dbPath);
 		this.store.initialize(this.embedder.getDimensions());
 		this.initialized = true;
 	}
 
 	async createMemory(input: CreateMemoryInput): Promise<CreateMemoryResult> {
-		await this.ensureInitialized();
+		this.ensureInitialized();
 
 		const additionalContext = input.additionalContext ?? "None provided";
 
@@ -95,7 +94,7 @@ export class MemoryService {
 		query: string | string[],
 		options: MemorySearchOptions,
 	): Promise<MemorySearchResult[]> {
-		await this.ensureInitialized();
+		this.ensureInitialized();
 
 		const store = this.store;
 		if (!store) {
@@ -125,6 +124,15 @@ export class MemoryService {
 
 		const limit = options.limit ?? 10;
 		return deduplicated.slice(0, limit);
+	}
+
+	getRandomSituations(limit = 5): string[] {
+		this.ensureInitialized();
+		const store = this.store;
+		if (!store) {
+			throw new Error("MemoryStore not initialized");
+		}
+		return store.getRandomSituations(limit);
 	}
 
 	close(): void {

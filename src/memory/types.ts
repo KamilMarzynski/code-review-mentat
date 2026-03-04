@@ -54,4 +54,5 @@ export type MemoryQueryInput = {
 	diff: string;
 	sourceBranch: string;
 	targetBranch: string;
+	exampleSituations?: string[];
 };

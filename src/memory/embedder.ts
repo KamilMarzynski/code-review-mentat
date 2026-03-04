@@ -1,31 +1,38 @@
-import type { FeatureExtractionPipeline } from "@xenova/transformers";
-
-const DEFAULT_MODEL = "mixedbread-ai/mxbai-embed-large-v1";
+const DEFAULT_MODEL = "mxbai-embed-large";
 const DIMENSIONS = 1024;
 
 export class Embedder {
-	private pipeline: FeatureExtractionPipeline | null = null;
+	private baseUrl = "http://localhost:11434/v1";
 
-	constructor(private modelName: string = DEFAULT_MODEL) {}
-
-	async initialize(): Promise<void> {
-		const { pipeline } = await import("@xenova/transformers");
-		this.pipeline = await pipeline("feature-extraction", this.modelName);
-	}
+	constructor(private model: string = DEFAULT_MODEL) {}
 
 	async embed(text: string): Promise<Float32Array> {
-		if (!this.pipeline) {
-			throw new Error("Embedder not initialized. Call initialize() first.");
-		}
-
-		const output = await this.pipeline(text, {
-			pooling: "cls",
-			normalize: true,
+		const response = await fetch(`${this.baseUrl}/embeddings`, {
+			method: "POST",
+			headers: {
+				"Content-Type": "application/json",
+			},
+			body: JSON.stringify({
+				model: this.model,
+				input: text,
+			}),
 		});
 
-		// Feature extraction with normalize returns Float32Array data,
-		// but Tensor.data is typed as a broad DataArray union
-		return new Float32Array(output.data as ArrayLike<number>);
+		if (!response.ok) {
+			const body = await response.text();
+			throw new Error(`Embeddings error ${response.status}: ${body}`);
+		}
+
+		const data = (await response.json()) as {
+			data?: { embedding?: number[]; index: number }[];
+		};
+		const embedding = data.data?.[0]?.embedding;
+
+		if (!embedding || embedding.length === 0) {
+			throw new Error("Embeddings API returned empty embedding");
+		}
+
+		return new Float32Array(embedding);
 	}
 
 	getDimensions(): number {

@@ -222,6 +222,9 @@ export class ActionExecutor {
 			// Load context from cache (may be null if user skipped context gathering)
 			const cachedContext = this.cache.get(cacheInput);
 
+			// Fetch example situations for query calibration
+			const exampleSituations = this.memoryService.getRandomSituations(5);
+
 			// Generate search queries via LLM
 			const queries = await this.memoryQueryGenerator.generateQueries({
 				context: cachedContext ?? undefined,
@@ -230,6 +233,7 @@ export class ActionExecutor {
 				diff: fullDiff,
 				sourceBranch: pr.source.name,
 				targetBranch: pr.target.name,
+				exampleSituations,
 			});
 
 			// Search vector database
@@ -252,6 +256,13 @@ export class ActionExecutor {
 						`✓ Found ${memories.length} relevant memory/memories from past reviews`,
 					),
 				);
+				for (const memory of memories) {
+					ui.info(
+						theme.secondary(`  [${memory.severity}] ${memory.situation}`),
+					);
+					ui.info(theme.muted(`    Lesson: ${memory.lesson}`));
+					ui.info(theme.muted(`    Distance: ${memory.distance.toFixed(3)}`));
+				}
 			} else {
 				spinner.stop(
 					theme.muted("No relevant memories found from past reviews"),
@@ -265,8 +276,7 @@ export class ActionExecutor {
 			);
 			ui.info(theme.muted(`   ${(error as Error).message}`));
 
-			// Try to cache empty array to prevent re-querying on failure
-			this.cache.saveMemories(cacheInput, []);
+			// Do not cache on failure — allow retry on next attempt
 		}
 	}
 

@@ -98,20 +98,21 @@ export class MemoryStore {
 	): MemorySearchResult[] {
 		const limit = options.limit ?? 10;
 
+		// k = ? is sqlite-vec's required KNN neighbor count (not a column)
 		const stmt = this.db.prepare(`
 			SELECT m.id, m.situation, m.lesson, m.file_extension, m.project_name, m.severity, v.distance
 			FROM memories_vec v
 			JOIN memories m ON m.id = v.id
 			WHERE v.embedding MATCH ?
+				AND k = ?
 				AND v.distance <= ?
 			ORDER BY v.distance
-			LIMIT ?
 		`);
 
 		const rows = stmt.all(
 			this.toBytes(embedding),
-			options.maxDistance,
 			limit,
+			options.maxDistance,
 		) as Array<{
 			id: string;
 			situation: string;
@@ -131,6 +132,14 @@ export class MemoryStore {
 			severity: row.severity,
 			distance: row.distance,
 		}));
+	}
+
+	getRandomSituations(limit: number): string[] {
+		const stmt = this.db.prepare(
+			"SELECT situation FROM memories ORDER BY RANDOM() LIMIT ?",
+		);
+		const rows = stmt.all(limit) as Array<{ situation: string }>;
+		return rows.map((row) => row.situation);
 	}
 
 	close(): void {
