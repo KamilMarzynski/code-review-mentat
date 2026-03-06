@@ -1,9 +1,14 @@
+import { Database } from "bun:sqlite";
 import { randomUUID } from "node:crypto";
+import { existsSync } from "node:fs";
 import { extname } from "node:path";
+import {
+	AgentMemories,
+	OpenAICompatibleEmbedder,
+	SqliteStore,
+} from "agent-memories";
 import { loadPrompt } from "../prompts/loader";
-import { Embedder } from "./embedder";
 import { LLMClient } from "./llm-client";
-import { MemoryStore } from "./memory-store";
 import type {
 	CreateMemoryInput,
 	CreateMemoryResult,
@@ -14,30 +19,27 @@ import type {
 
 export class MemoryService {
 	private llm: LLMClient;
-	private embedder: Embedder;
-	private store: MemoryStore | null = null;
-	private initialized = false;
-	private config: MemoryServiceConfig;
+	private memories: AgentMemories;
+	private dbPath: string;
 
 	constructor(config: MemoryServiceConfig) {
-		this.config = config;
+		this.dbPath = config.dbPath;
 		this.llm = new LLMClient(
 			config.openRouterApiKey,
 			config.model ?? "anthropic/claude-haiku-4-5",
 		);
-		this.embedder = new Embedder(config.embeddingModel);
-	}
-
-	private ensureInitialized(): void {
-		if (this.initialized) return;
-		this.store = new MemoryStore(this.config.dbPath);
-		this.store.initialize(this.embedder.getDimensions());
-		this.initialized = true;
+		this.memories = new AgentMemories({
+			store: new SqliteStore({
+				path: config.dbPath,
+				filterableFields: ["severity", "fileExtension"],
+			}),
+			embedder: new OpenAICompatibleEmbedder({
+				model: config.embeddingModel ?? "mxbai-embed-large",
+			}),
+		});
 	}
 
 	async createMemory(input: CreateMemoryInput): Promise<CreateMemoryResult> {
-		this.ensureInitialized();
-
 		const additionalContext = input.additionalContext ?? "None provided";
 
 		const situationPrompt = loadPrompt(
@@ -68,23 +70,18 @@ export class MemoryService {
 			"Generate the lesson.",
 		);
 
-		const embedding = await this.embedder.embed(situation);
-
 		const id = randomUUID();
-		const store = this.store;
-		if (!store) {
-			throw new Error("MemoryStore not initialized");
-		}
-		store.insert({
+		await this.memories.insert({
 			id,
-			situation,
-			lesson,
-			fileExtension: extname(input.file),
-			projectName: input.projectName ?? null,
-			file: input.file,
-			severity: input.severity,
-			embedding,
-			createdAt: new Date().toISOString(),
+			embedText: situation,
+			data: {
+				situation,
+				lesson,
+				fileExtension: extname(input.file),
+				projectName: input.projectName ?? null,
+				file: input.file,
+				severity: input.severity,
+			},
 		});
 
 		return { id, situation, lesson };
@@ -94,48 +91,42 @@ export class MemoryService {
 		query: string | string[],
 		options: MemorySearchOptions,
 	): Promise<MemorySearchResult[]> {
-		this.ensureInitialized();
-
-		const store = this.store;
-		if (!store) {
-			throw new Error("MemoryStore not initialized");
-		}
-
 		const queries = Array.isArray(query) ? query : [query];
-		const allResults: MemorySearchResult[] = [];
 
-		for (const q of queries) {
-			const embedding = await this.embedder.embed(q);
-			const results = store.search(embedding, options);
-			allResults.push(...results);
-		}
+		const results = await this.memories.searchMultiple(queries, {
+			maxDistance: options.maxDistance,
+			limit: options.limit,
+		});
 
-		// Deduplicate by ID, keeping best (lowest) distance
-		const bestByID = new Map<string, MemorySearchResult>();
-		for (const result of allResults) {
-			const existing = bestByID.get(result.id);
-			if (!existing || result.distance < existing.distance) {
-				bestByID.set(result.id, result);
-			}
-		}
-
-		const deduplicated = Array.from(bestByID.values());
-		deduplicated.sort((a, b) => a.distance - b.distance);
-
-		const limit = options.limit ?? 10;
-		return deduplicated.slice(0, limit);
+		return results.map((r) => ({
+			id: r.id,
+			situation: r.data.situation as string,
+			lesson: r.data.lesson as string,
+			fileExtension: r.data.fileExtension as string,
+			projectName: (r.data.projectName as string | null) ?? null,
+			severity: r.data.severity as string,
+			distance: r.distance,
+		}));
 	}
 
 	getRandomSituations(limit = 5): string[] {
-		this.ensureInitialized();
-		const store = this.store;
-		if (!store) {
-			throw new Error("MemoryStore not initialized");
+		if (!existsSync(this.dbPath)) {
+			return [];
 		}
-		return store.getRandomSituations(limit);
+
+		const db = new Database(this.dbPath, { readonly: true });
+		try {
+			const stmt = db.prepare(
+				"SELECT json_extract(data, '$.situation') as situation FROM memories ORDER BY RANDOM() LIMIT ?",
+			);
+			const rows = stmt.all(limit) as Array<{ situation: string }>;
+			return rows.map((row) => row.situation);
+		} finally {
+			db.close();
+		}
 	}
 
-	close(): void {
-		this.store?.close();
+	async close(): Promise<void> {
+		await this.memories.close();
 	}
 }

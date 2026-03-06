@@ -171,7 +171,7 @@ const main = async () => {
 	try {
 		await orchestrator.run();
 	} finally {
-		memoryService.close();
+		await memoryService.close();
 
 		// Close MCP client if it was initialized
 		try {

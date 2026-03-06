@@ -14,18 +14,6 @@ export type CreateMemoryInput = {
 	projectName?: string;
 };
 
-export type MemoryDocument = {
-	id: string;
-	situation: string;
-	lesson: string;
-	fileExtension: string;
-	projectName: string | null;
-	file: string;
-	severity: string;
-	embedding: Float32Array;
-	createdAt: string;
-};
-
 export type CreateMemoryResult = {
 	id: string;
 	situation: string;
