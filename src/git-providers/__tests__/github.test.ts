@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, mock } from "bun:test";
 import GitHubProvider from "../github";
+// biome-ignore lint/correctness/noUnusedImports: used in Task 4
+import type { PullRequest } from "../types";
 
 function mockResponse(
 	status: number,

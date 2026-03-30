@@ -16,10 +16,12 @@ type GitHubPullRequest = {
 	base: { ref: string; sha: string };
 };
 
+// biome-ignore lint/correctness/noUnusedVariables: used in Tasks 4-5
 type GitHubCommit = {
 	commit: { message: string };
 };
 
+// biome-ignore lint/correctness/noUnusedVariables: used in Tasks 4-5
 type GitHubReviewResponse = {
 	id: number;
 };
@@ -31,6 +33,7 @@ type GitHubReviewComment = {
 	body: string;
 };
 
+// biome-ignore lint/correctness/noUnusedVariables: used in Tasks 4-5
 type GitHubReviewBody = {
 	body: string;
 	event: "COMMENT";
@@ -123,17 +126,12 @@ export default class GitHubProvider extends GitProvider {
 	}
 
 	private handleRateLimit(response: Response): void {
-		if (response.status === 429) {
-			const reset = response.headers.get("x-ratelimit-reset");
-			const resetTime = reset
-				? new Date(Number(reset) * 1000).toISOString()
-				: "unknown";
-			throw new Error(`GitHub rate limit exceeded. Resets at ${resetTime}`);
-		}
-		if (
-			response.status === 403 &&
-			response.headers.get("x-ratelimit-remaining") === "0"
-		) {
+		const isRateLimit =
+			response.status === 429 ||
+			(response.status === 403 &&
+				response.headers.get("x-ratelimit-remaining") === "0");
+
+		if (isRateLimit) {
 			const reset = response.headers.get("x-ratelimit-reset");
 			const resetTime = reset
 				? new Date(Number(reset) * 1000).toISOString()
