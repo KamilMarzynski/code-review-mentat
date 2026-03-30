@@ -1,6 +1,8 @@
-import { beforeEach } from "bun:test";
+import { beforeEach, describe, expect, it, mock } from "bun:test";
+import GitHubProvider from "../github";
+import type { PullRequest } from "../types";
 
-function _mockResponse(
+function mockResponse(
 	status: number,
 	body: unknown,
 	headers: Record<string, string> = {},

@@ -6,9 +6,9 @@ import {
 	type RemoteInfo,
 } from "./types";
 
-const _GITHUB_API = "https://api.github.com";
+const GITHUB_API = "https://api.github.com";
 
-type _GitHubPullRequest = {
+type GitHubPullRequest = {
 	number: number;
 	title: string;
 	body: string | null;
@@ -16,25 +16,25 @@ type _GitHubPullRequest = {
 	base: { ref: string; sha: string };
 };
 
-type _GitHubCommit = {
+type GitHubCommit = {
 	commit: { message: string };
 };
 
-type _GitHubReviewResponse = {
+type GitHubReviewResponse = {
 	id: number;
 };
 
-type _GitHubReviewComment = {
+type GitHubReviewComment = {
 	path: string;
 	line: number;
 	side: "RIGHT";
 	body: string;
 };
 
-type _GitHubReviewBody = {
+type GitHubReviewBody = {
 	body: string;
 	event: "COMMENT";
-	comments: _GitHubReviewComment[];
+	comments: GitHubReviewComment[];
 };
 
 export default class GitHubProvider extends GitProvider {
