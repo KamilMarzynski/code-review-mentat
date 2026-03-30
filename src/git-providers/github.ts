@@ -51,8 +51,22 @@ export default class GitHubProvider extends GitProvider {
 		this.remote = parsed;
 	}
 
-	static parseRemote(_sshRemote: string): RemoteInfo | undefined {
-		throw new Error("not implemented");
+	static parseRemote(sshRemote: string): RemoteInfo | undefined {
+		const match = sshRemote
+			.trim()
+			.match(/^git@github\.com:([^/]+)\/(.+?)(?:\.git)?$/);
+		if (!match) return undefined;
+
+		const owner = match[1];
+		const repo = match[2];
+
+		if (!owner || !repo) return undefined;
+
+		return {
+			host: "github.com",
+			projectKey: owner,
+			repoSlug: repo,
+		};
 	}
 
 	async fetchPullRequests(): Promise<PullRequest[]> {

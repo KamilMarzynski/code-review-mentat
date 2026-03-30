@@ -31,3 +31,45 @@ beforeEach(() => {
 	global.fetch = originalFetch;
 	process.env.GITHUB_TOKEN = "test-token";
 });
+
+describe("GitHubProvider.parseRemote", () => {
+	it("parses a standard GitHub SSH remote", () => {
+		const result = GitHubProvider.parseRemote("git@github.com:acme-org/my-repo.git");
+		expect(result).toEqual({
+			host: "github.com",
+			projectKey: "acme-org",
+			repoSlug: "my-repo",
+		});
+	});
+
+	it("parses a remote without .git suffix", () => {
+		const result = GitHubProvider.parseRemote("git@github.com:acme-org/my-repo");
+		expect(result).toEqual({
+			host: "github.com",
+			projectKey: "acme-org",
+			repoSlug: "my-repo",
+		});
+	});
+
+	it("returns undefined for a Bitbucket SSH remote", () => {
+		const result = GitHubProvider.parseRemote(
+			"ssh://git@bitbucket.example.com:7999/PROJ/repo.git",
+		);
+		expect(result).toBeUndefined();
+	});
+
+	it("returns undefined for an HTTPS GitHub remote", () => {
+		const result = GitHubProvider.parseRemote("https://github.com/acme-org/my-repo.git");
+		expect(result).toBeUndefined();
+	});
+
+	it("returns undefined for an empty string", () => {
+		expect(GitHubProvider.parseRemote("")).toBeUndefined();
+	});
+
+	it("constructor throws for a non-GitHub remote", () => {
+		expect(
+			() => new GitHubProvider("ssh://git@bitbucket.example.com:7999/PROJ/repo.git"),
+		).toThrow("Invalid GitHub SSH remote");
+	});
+});
