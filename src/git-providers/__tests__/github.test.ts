@@ -1,6 +1,5 @@
 import { beforeEach, describe, expect, it, mock } from "bun:test";
 import GitHubProvider from "../github";
-// biome-ignore lint/correctness/noUnusedImports: used in Task 4
 import type { PullRequest } from "../types";
 
 function mockResponse(
@@ -192,6 +191,74 @@ describe("GitHubProvider.fetchPullRequests", () => {
 
 		expect(capturedUrl).toBe(
 			"https://api.github.com/repos/acme-org/my-repo/pulls?state=open&per_page=100",
+		);
+	});
+});
+
+describe("GitHubProvider.fetchCommits", () => {
+	const provider = new GitHubProvider("git@github.com:acme-org/my-repo.git");
+	const pr: PullRequest = {
+		id: 42,
+		title: "PR title",
+		description: "",
+		source: { name: "feature/x", commitHash: "abc" },
+		target: { name: "main", commitHash: "def" },
+	};
+
+	it("returns commit messages on success", async () => {
+		global.fetch = mock(() =>
+			Promise.resolve(
+				mockResponse(200, [
+					{ commit: { message: "feat: add login" } },
+					{ commit: { message: "fix: typo in login" } },
+				]),
+			),
+		) as typeof fetch;
+
+		const messages = await provider.fetchCommits(pr);
+
+		expect(messages).toEqual(["feat: add login", "fix: typo in login"]);
+	});
+
+	it("calls the correct GitHub API URL", async () => {
+		let capturedUrl = "";
+		global.fetch = mock((url: string) => {
+			capturedUrl = url;
+			return Promise.resolve(mockResponse(200, []));
+		}) as typeof fetch;
+
+		await provider.fetchCommits(pr);
+
+		expect(capturedUrl).toBe(
+			"https://api.github.com/repos/acme-org/my-repo/pulls/42/commits?per_page=100",
+		);
+	});
+
+	it("throws on 401 with descriptive message", async () => {
+		global.fetch = mock(() =>
+			Promise.resolve(mockResponse(401, { message: "Bad credentials" })),
+		) as typeof fetch;
+
+		await expect(provider.fetchCommits(pr)).rejects.toThrow(
+			"GitHub authentication failed: GITHUB_TOKEN may be invalid",
+		);
+	});
+
+	it("throws a descriptive error on non-ok response", async () => {
+		global.fetch = mock(() =>
+			Promise.resolve(mockResponse(404, { message: "Not Found" })),
+		) as typeof fetch;
+
+		await expect(provider.fetchCommits(pr)).rejects.toThrow(
+			"Failed to fetch commits: 404 Not Found",
+		);
+	});
+
+	it("throws when GITHUB_TOKEN is not set", async () => {
+		delete process.env.GITHUB_TOKEN;
+
+		await expect(provider.fetchCommits(pr)).rejects.toThrow(
+			"GITHUB_TOKEN is not set",
 		);
 	});
 });
