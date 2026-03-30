@@ -1,0 +1,31 @@
+import { beforeEach } from "bun:test";
+
+function _mockResponse(
+	status: number,
+	body: unknown,
+	headers: Record<string, string> = {},
+): Response {
+	const statusTexts: Record<number, string> = {
+		200: "OK",
+		401: "Unauthorized",
+		403: "Forbidden",
+		404: "Not Found",
+		429: "Too Many Requests",
+		422: "Unprocessable Entity",
+	};
+	return {
+		ok: status >= 200 && status < 300,
+		status,
+		statusText: statusTexts[status] ?? "Error",
+		headers: new Headers(headers),
+		json: () => Promise.resolve(body),
+		text: () => Promise.resolve(JSON.stringify(body)),
+	} as unknown as Response;
+}
+
+const originalFetch = global.fetch;
+
+beforeEach(() => {
+	global.fetch = originalFetch;
+	process.env.GITHUB_TOKEN = "test-token";
+});
