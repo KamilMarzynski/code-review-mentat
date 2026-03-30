@@ -16,7 +16,6 @@ type GitHubPullRequest = {
 	base: { ref: string; sha: string };
 };
 
-// biome-ignore lint/correctness/noUnusedVariables: used in Tasks 4-5
 type GitHubCommit = {
 	commit: { message: string };
 };
@@ -114,8 +113,37 @@ export default class GitHubProvider extends GitProvider {
 		);
 	}
 
-	async fetchCommits(_pr: PullRequest): Promise<string[]> {
-		throw new Error("not implemented");
+	async fetchCommits(pr: PullRequest): Promise<string[]> {
+		const token = process.env.GITHUB_TOKEN;
+		if (!token) {
+			throw new Error("GITHUB_TOKEN is not set");
+		}
+
+		const { projectKey: owner, repoSlug: repo } = this.remote;
+		const url = `${GITHUB_API}/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/pulls/${pr.id}/commits?per_page=100`;
+
+		const response = await fetch(url, {
+			headers: {
+				Authorization: `Bearer ${token}`,
+				Accept: "application/vnd.github+json",
+			},
+		});
+
+		this.handleRateLimit(response);
+
+		if (!response.ok) {
+			if (response.status === 401) {
+				throw new Error(
+					"GitHub authentication failed: GITHUB_TOKEN may be invalid",
+				);
+			}
+			throw new Error(
+				`Failed to fetch commits: ${response.status} ${response.statusText}`,
+			);
+		}
+
+		const data = (await response.json()) as GitHubCommit[];
+		return data.map((c) => c.commit.message);
 	}
 
 	async createPullRequestComment(
