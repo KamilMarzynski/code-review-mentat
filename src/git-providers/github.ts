@@ -54,7 +54,7 @@ export default class GitHubProvider extends GitProvider {
 	static parseRemote(sshRemote: string): RemoteInfo | undefined {
 		const match = sshRemote
 			.trim()
-			.match(/^git@github\.com:([^/]+)\/(.+?)(?:\.git)?$/);
+			.match(/^git@github\.com:([^/]+)\/([^/]+?)(?:\.git)?$/);
 		if (!match) return undefined;
 
 		const owner = match[1];

@@ -34,7 +34,9 @@ beforeEach(() => {
 
 describe("GitHubProvider.parseRemote", () => {
 	it("parses a standard GitHub SSH remote", () => {
-		const result = GitHubProvider.parseRemote("git@github.com:acme-org/my-repo.git");
+		const result = GitHubProvider.parseRemote(
+			"git@github.com:acme-org/my-repo.git",
+		);
 		expect(result).toEqual({
 			host: "github.com",
 			projectKey: "acme-org",
@@ -43,7 +45,9 @@ describe("GitHubProvider.parseRemote", () => {
 	});
 
 	it("parses a remote without .git suffix", () => {
-		const result = GitHubProvider.parseRemote("git@github.com:acme-org/my-repo");
+		const result = GitHubProvider.parseRemote(
+			"git@github.com:acme-org/my-repo",
+		);
 		expect(result).toEqual({
 			host: "github.com",
 			projectKey: "acme-org",
@@ -59,7 +63,9 @@ describe("GitHubProvider.parseRemote", () => {
 	});
 
 	it("returns undefined for an HTTPS GitHub remote", () => {
-		const result = GitHubProvider.parseRemote("https://github.com/acme-org/my-repo.git");
+		const result = GitHubProvider.parseRemote(
+			"https://github.com/acme-org/my-repo.git",
+		);
 		expect(result).toBeUndefined();
 	});
 
@@ -69,7 +75,10 @@ describe("GitHubProvider.parseRemote", () => {
 
 	it("constructor throws for a non-GitHub remote", () => {
 		expect(
-			() => new GitHubProvider("ssh://git@bitbucket.example.com:7999/PROJ/repo.git"),
+			() =>
+				new GitHubProvider(
+					"ssh://git@bitbucket.example.com:7999/PROJ/repo.git",
+				),
 		).toThrow("Invalid GitHub SSH remote");
 	});
 });
