@@ -292,3 +292,152 @@ describe("GitHubProvider.fetchCommits", () => {
 		);
 	});
 });
+
+describe("GitHubProvider.createPullRequestComment", () => {
+	const provider = new GitHubProvider("git@github.com:acme-org/my-repo.git");
+	const pr: PullRequest = {
+		id: 42,
+		title: "PR title",
+		description: "",
+		source: { name: "feature/x", commitHash: "abc" },
+		target: { name: "main", commitHash: "def" },
+	};
+
+	it("posts a line comment with severity prefix", async () => {
+		let capturedBody = "";
+		global.fetch = mock((_url: string, options?: RequestInit) => {
+			capturedBody = options?.body as string;
+			return Promise.resolve(mockResponse(200, { id: 99 }));
+		}) as typeof fetch;
+
+		const result = await provider.createPullRequestComment(pr, {
+			text: "This looks risky",
+			path: "src/auth.ts",
+			line: 42,
+			severity: "risk",
+		});
+
+		expect(result).toEqual({ id: 99 });
+
+		const body = JSON.parse(capturedBody);
+		expect(body.event).toBe("COMMENT");
+		expect(body.comments).toHaveLength(1);
+		expect(body.comments[0].path).toBe("src/auth.ts");
+		expect(body.comments[0].line).toBe(42);
+		expect(body.comments[0].side).toBe("RIGHT");
+		expect(body.comments[0].body).toBe("[risk] This looks risky");
+		expect(body.body).toBe("");
+	});
+
+	it("posts a general comment (no path) in review body", async () => {
+		let capturedBody = "";
+		global.fetch = mock((_url: string, options?: RequestInit) => {
+			capturedBody = options?.body as string;
+			return Promise.resolve(mockResponse(200, { id: 100 }));
+		}) as typeof fetch;
+
+		await provider.createPullRequestComment(pr, {
+			text: "Overall this looks good",
+			severity: "suggestion",
+		});
+
+		const body = JSON.parse(capturedBody);
+		expect(body.body).toBe("[suggestion] Overall this looks good");
+		expect(body.comments).toHaveLength(0);
+		expect(body.event).toBe("COMMENT");
+	});
+
+	it("omits severity prefix when severity is not set", async () => {
+		let capturedBody = "";
+		global.fetch = mock((_url: string, options?: RequestInit) => {
+			capturedBody = options?.body as string;
+			return Promise.resolve(mockResponse(200, { id: 101 }));
+		}) as typeof fetch;
+
+		await provider.createPullRequestComment(pr, {
+			text: "Nice work",
+			path: "src/foo.ts",
+			line: 5,
+		});
+
+		const body = JSON.parse(capturedBody);
+		expect(body.comments[0].body).toBe("Nice work");
+	});
+
+	it("silently ignores parentId", async () => {
+		let capturedBody = "";
+		global.fetch = mock((_url: string, options?: RequestInit) => {
+			capturedBody = options?.body as string;
+			return Promise.resolve(mockResponse(200, { id: 102 }));
+		}) as typeof fetch;
+
+		await provider.createPullRequestComment(pr, {
+			text: "Reply text",
+			parentId: 55,
+		});
+
+		const body = JSON.parse(capturedBody);
+		expect(body).not.toHaveProperty("in_reply_to");
+		expect(body).not.toHaveProperty("parentId");
+	});
+
+	it("defaults line to 1 when path is set but line is undefined", async () => {
+		let capturedBody = "";
+		global.fetch = mock((_url: string, options?: RequestInit) => {
+			capturedBody = options?.body as string;
+			return Promise.resolve(mockResponse(200, { id: 103 }));
+		}) as typeof fetch;
+
+		await provider.createPullRequestComment(pr, {
+			text: "File-level comment",
+			path: "src/foo.ts",
+		});
+
+		const body = JSON.parse(capturedBody);
+		expect(body.comments[0].line).toBe(1);
+	});
+
+	it("calls the correct GitHub API URL", async () => {
+		let capturedUrl = "";
+		global.fetch = mock((url: string) => {
+			capturedUrl = url;
+			return Promise.resolve(mockResponse(200, { id: 1 }));
+		}) as typeof fetch;
+
+		await provider.createPullRequestComment(pr, { text: "test" });
+
+		expect(capturedUrl).toBe(
+			"https://api.github.com/repos/acme-org/my-repo/pulls/42/reviews",
+		);
+	});
+
+	it("throws on 401 with descriptive message", async () => {
+		global.fetch = mock(() =>
+			Promise.resolve(mockResponse(401, { message: "Bad credentials" })),
+		) as typeof fetch;
+
+		await expect(
+			provider.createPullRequestComment(pr, { text: "test" }),
+		).rejects.toThrow(
+			"GitHub authentication failed: GITHUB_TOKEN may be invalid",
+		);
+	});
+
+	it("throws a descriptive error on non-ok response", async () => {
+		global.fetch = mock(() =>
+			Promise.resolve(mockResponse(422, { message: "Unprocessable" })),
+		) as typeof fetch;
+
+		await expect(
+			provider.createPullRequestComment(pr, { text: "test" }),
+		).rejects.toThrow("Failed to create comment: 422 Unprocessable Entity");
+	});
+
+	it("throws when GITHUB_TOKEN is not set", async () => {
+		delete process.env.GITHUB_TOKEN;
+
+		await expect(
+			provider.createPullRequestComment(pr, { text: "test" }),
+		).rejects.toThrow("GITHUB_TOKEN is not set");
+	});
+});
