@@ -70,7 +70,45 @@ export default class GitHubProvider extends GitProvider {
 	}
 
 	async fetchPullRequests(): Promise<PullRequest[]> {
-		throw new Error("not implemented");
+		const token = process.env.GITHUB_TOKEN;
+		if (!token) {
+			throw new Error("GITHUB_TOKEN is not set");
+		}
+
+		const { projectKey: owner, repoSlug: repo } = this.remote;
+		const url = `${GITHUB_API}/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/pulls?state=open&per_page=100`;
+
+		const response = await fetch(url, {
+			headers: {
+				Authorization: `Bearer ${token}`,
+				Accept: "application/vnd.github+json",
+			},
+		});
+
+		this.handleRateLimit(response);
+
+		if (!response.ok) {
+			if (response.status === 401) {
+				throw new Error(
+					"GitHub authentication failed: GITHUB_TOKEN may be invalid",
+				);
+			}
+			throw new Error(
+				`Failed to fetch PRs: ${response.status} ${response.statusText}`,
+			);
+		}
+
+		const data = (await response.json()) as GitHubPullRequest[];
+
+		return data.map(
+			(pr): PullRequest => ({
+				id: pr.number,
+				title: pr.title,
+				description: pr.body ?? "",
+				source: { name: pr.head.ref, commitHash: pr.head.sha },
+				target: { name: pr.base.ref, commitHash: pr.base.sha },
+			}),
+		);
 	}
 
 	async fetchCommits(_pr: PullRequest): Promise<string[]> {
@@ -84,7 +122,23 @@ export default class GitHubProvider extends GitProvider {
 		throw new Error("not implemented");
 	}
 
-	private handleRateLimit(_response: Response): void {
-		throw new Error("not implemented");
+	private handleRateLimit(response: Response): void {
+		if (response.status === 429) {
+			const reset = response.headers.get("x-ratelimit-reset");
+			const resetTime = reset
+				? new Date(Number(reset) * 1000).toISOString()
+				: "unknown";
+			throw new Error(`GitHub rate limit exceeded. Resets at ${resetTime}`);
+		}
+		if (
+			response.status === 403 &&
+			response.headers.get("x-ratelimit-remaining") === "0"
+		) {
+			const reset = response.headers.get("x-ratelimit-reset");
+			const resetTime = reset
+				? new Date(Number(reset) * 1000).toISOString()
+				: "unknown";
+			throw new Error(`GitHub rate limit exceeded. Resets at ${resetTime}`);
+		}
 	}
 }
