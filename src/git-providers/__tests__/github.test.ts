@@ -1,4 +1,6 @@
 import { beforeEach, describe, expect, it, mock } from "bun:test";
+import BitbucketServerGitProvider from "../bitbucket";
+import { GitProviderFactory } from "../factory";
 import GitHubProvider from "../github";
 import type { PullRequest } from "../types";
 
@@ -469,5 +471,21 @@ describe("GitHubProvider.createPullRequestComment", () => {
 		await expect(
 			provider.createPullRequestComment(pr, { text: "test" }),
 		).rejects.toThrow("GitHub rate limit exceeded. Resets at");
+	});
+});
+
+describe("GitProviderFactory", () => {
+	it("returns GitHubProvider for a github.com SSH remote", () => {
+		const factory = new GitProviderFactory();
+		const provider = factory.create("git@github.com:acme-org/my-repo.git");
+		expect(provider).toBeInstanceOf(GitHubProvider);
+	});
+
+	it("returns BitbucketServerGitProvider for a Bitbucket SSH remote", () => {
+		const factory = new GitProviderFactory();
+		const provider = factory.create(
+			"ssh://git@bitbucket.example.com:7999/PROJ/repo.git",
+		);
+		expect(provider).toBeInstanceOf(BitbucketServerGitProvider);
 	});
 });

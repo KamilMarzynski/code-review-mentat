@@ -1,16 +1,19 @@
 import BitbucketServerGitProvider from "./bitbucket";
+import GitHubProvider from "./github";
 import type { GitProvider } from "./types";
 
 /**
- * Simple factory for creating git provider instances
+ * Simple factory for creating git provider instances.
  *
- * Currently supports Bitbucket Server. Can be extended to support
- * other providers (GitHub, GitLab, etc.) based on remote URL pattern.
+ * Detects the provider from the remote URL:
+ * - github.com → GitHubProvider
+ * - Everything else → BitbucketServerGitProvider
  */
 export class GitProviderFactory {
 	create(remote: string): GitProvider {
-		// For now, we only support Bitbucket Server
-		// Future: Could detect provider type from remote URL and instantiate accordingly
+		if (remote.includes("github.com")) {
+			return new GitHubProvider(remote);
+		}
 		return new BitbucketServerGitProvider(remote);
 	}
 }
