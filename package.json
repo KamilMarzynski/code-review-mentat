@@ -8,7 +8,7 @@
 		"crm": "./code-review"
 	},
 	"scripts": {
-		"build": "bun build src/index.ts --compile --outfile code-review",
+		"build": "bun build src/index.ts --compile --outfile code-review --external better-sqlite3",
 		"install:global": "bun run build && chmod +x code-review && npm link",
 		"uninstall:global": "npm unlink -g code-review-mentat",
 		"start": "bun run src/index.ts",
