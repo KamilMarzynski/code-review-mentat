@@ -440,4 +440,34 @@ describe("GitHubProvider.createPullRequestComment", () => {
 			provider.createPullRequestComment(pr, { text: "test" }),
 		).rejects.toThrow("GITHUB_TOKEN is not set");
 	});
+
+	it("throws on 403 rate limit with reset time", async () => {
+		const resetEpoch = Math.floor(Date.now() / 1000) + 3600;
+		global.fetch = mock(() =>
+			Promise.resolve(
+				mockResponse(
+					403,
+					{ message: "rate limit exceeded" },
+					{
+						"x-ratelimit-remaining": "0",
+						"x-ratelimit-reset": String(resetEpoch),
+					},
+				),
+			),
+		) as typeof fetch;
+
+		await expect(
+			provider.createPullRequestComment(pr, { text: "test" }),
+		).rejects.toThrow("GitHub rate limit exceeded. Resets at");
+	});
+
+	it("throws on 429 rate limit", async () => {
+		global.fetch = mock(() =>
+			Promise.resolve(mockResponse(429, { message: "rate limit exceeded" })),
+		) as typeof fetch;
+
+		await expect(
+			provider.createPullRequestComment(pr, { text: "test" }),
+		).rejects.toThrow("GitHub rate limit exceeded. Resets at");
+	});
 });
