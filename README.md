@@ -2,7 +2,7 @@
 
 An AI-powered command-line tool that transforms your code review workflow using Claude AI. Beyond just reviewing your code, it assists you in reviewing other engineers' pull requests, posting AI-generated comments to remote repositories, and helping you address feedback left by other reviewers.
 
-> 📌 **Current Status:** Currently supports **Bitbucket Server** only, as it's the git server solution used at my company.
+> 📌 **Current Status:** Currently supports **Bitbucket Server** and **GitHub** (via SSH remotes).
 
 ## About the Name
 
@@ -54,6 +54,11 @@ You need to set up the following environment variables:
 3. **`PATH_TO_CLAUDE`** - Path to your Claude Code executable file
    Example: `/Applications/Claude.app/Contents/MacOS/Claude`
 
+4. **`GITHUB_TOKEN`** *(optional — required for GitHub repositories)*
+   Your GitHub Personal Access Token with `repo` scope.
+   Generate from: GitHub Settings → Developer settings → Personal access tokens → Fine-grained tokens
+   Required permissions: Pull requests (read), Contents (read)
+
 ### Setting Environment Variables
 
 Add these to your shell configuration file (`~/.zshrc` or `~/.bashrc`):
@@ -61,6 +66,7 @@ Add these to your shell configuration file (`~/.zshrc` or `~/.bashrc`):
 ```bash
 export OPENROUTER_API_KEY="your-openrouter-api-key"
 export BB_TOKEN="your-bitbucket-token"
+export GITHUB_TOKEN="your-github-token"
 export PATH_TO_CLAUDE="/Applications/Claude.app/Contents/MacOS/Claude"
 ```
 
