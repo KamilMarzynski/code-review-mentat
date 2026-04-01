@@ -182,7 +182,7 @@ export default class BitbucketServerGitProvider implements GitProvider {
 			id: data.id,
 			url: data.links.self[0]?.href,
 		};
-}
+	}
 
 	private normalizeAnchor(anchor: CreatePullRequestCommentAnchor) {
 		// path is always required for anchored comments
