@@ -309,7 +309,13 @@ describe("GitHubProvider.createPullRequestComment", () => {
 		let capturedBody = "";
 		global.fetch = mock((_url: string, options?: RequestInit) => {
 			capturedBody = options?.body as string;
-			return Promise.resolve(mockResponse(200, { id: 99 }));
+			return Promise.resolve(
+				mockResponse(200, {
+					id: 99,
+					html_url:
+						"https://github.com/acme-org/my-repo/pull/42#pullrequestreview-99",
+				}),
+			);
 		}) as typeof fetch;
 
 		const result = await provider.createPullRequestComment(pr, {
@@ -319,7 +325,10 @@ describe("GitHubProvider.createPullRequestComment", () => {
 			severity: "risk",
 		});
 
-		expect(result).toEqual({ id: 99 });
+		expect(result).toEqual({
+			id: 99,
+			url: "https://github.com/acme-org/my-repo/pull/42#pullrequestreview-99",
+		});
 
 		const body = JSON.parse(capturedBody);
 		expect(body.event).toBe("COMMENT");
@@ -471,6 +480,54 @@ describe("GitHubProvider.createPullRequestComment", () => {
 		await expect(
 			provider.createPullRequestComment(pr, { text: "test" }),
 		).rejects.toThrow("GitHub rate limit exceeded. Resets at");
+	});
+
+	it("includes confidence prefix when both severity and confidence are set", async () => {
+		let capturedBody = "";
+		global.fetch = mock((_url: string, options?: RequestInit) => {
+			capturedBody = options?.body as string;
+			return Promise.resolve(
+				mockResponse(200, {
+					id: 99,
+					html_url:
+						"https://github.com/acme-org/my-repo/pull/42#pullrequestreview-99",
+				}),
+			);
+		}) as typeof fetch;
+
+		await provider.createPullRequestComment(pr, {
+			text: "This looks risky",
+			path: "src/auth.ts",
+			line: 42,
+			severity: "risk",
+			confidence: "high",
+		});
+
+		const body = JSON.parse(capturedBody);
+		expect(body.comments[0].body).toBe(
+			"[risk] [high confidence] This looks risky",
+		);
+	});
+
+	it("returns url from html_url in review response", async () => {
+		global.fetch = mock(() =>
+			Promise.resolve(
+				mockResponse(200, {
+					id: 99,
+					html_url:
+						"https://github.com/acme-org/my-repo/pull/42#pullrequestreview-99",
+				}),
+			),
+		) as typeof fetch;
+
+		const result = await provider.createPullRequestComment(pr, {
+			text: "test",
+		});
+
+		expect(result).toEqual({
+			id: 99,
+			url: "https://github.com/acme-org/my-repo/pull/42#pullrequestreview-99",
+		});
 	});
 });
 

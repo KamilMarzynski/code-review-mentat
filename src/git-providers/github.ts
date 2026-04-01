@@ -22,6 +22,7 @@ type GitHubCommit = {
 
 type GitHubReviewResponse = {
 	id: number;
+	html_url: string;
 };
 
 type GitHubReviewComment = {
@@ -156,9 +157,13 @@ export default class GitHubProvider extends GitProvider {
 		const { projectKey: owner, repoSlug: repo } = this.remote;
 		const url = `${GITHUB_API}/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/pulls/${pr.id}/reviews`;
 
-		const body = comment.severity
-			? `[${comment.severity}] ${comment.text}`
-			: comment.text;
+		const prefix = [
+			comment.severity ? `[${comment.severity}]` : null,
+			comment.confidence ? `[${comment.confidence} confidence]` : null,
+		]
+			.filter(Boolean)
+			.join(" ");
+		const body = prefix ? `${prefix} ${comment.text}` : comment.text;
 
 		const reviewBody: GitHubReviewBody = comment.path
 			? {
@@ -203,7 +208,7 @@ export default class GitHubProvider extends GitProvider {
 		}
 
 		const data = (await response.json()) as GitHubReviewResponse;
-		return { id: data.id };
+		return { id: data.id, url: data.html_url };
 	}
 
 	private handleRateLimit(response: Response): void {
