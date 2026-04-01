@@ -5,10 +5,18 @@ import type {
 	GitProvider,
 	PullRequest,
 } from "../../git-providers/types";
-import type { ReviewComment } from "../../review/types";
+import type { ReviewComment, StoredReviewComment } from "../../review/types";
 import type { UILogger } from "../../ui/logger";
 import { theme } from "../../ui/theme";
 import { promptForPR, promptForRemote } from "../cli-prompts";
+
+export type PostCommentResult = {
+	comment: StoredReviewComment;
+	success: boolean;
+	id?: number;
+	url?: string;
+	error?: string;
+};
 
 export class PRWorkflowManager {
 	private provider: GitProvider | null = null;
@@ -246,41 +254,43 @@ export class PRWorkflowManager {
 
 	public async postCommentsToRemote(
 		pr: PullRequest,
-		comments: ReviewComment[],
-	): Promise<void> {
+		comments: StoredReviewComment[],
+	): Promise<PostCommentResult[]> {
 		if (!this.provider) {
 			throw new Error("Git provider not set. Call setProviderForRemote first.");
 		}
-		if (comments.length === 0) {
-			this.ui.info(theme.muted("No comments to post to remote."));
-			return;
-		}
 
-		const prComments: CreatePullRequestCommentRequest[] = comments.map(
-			(comment) => ({
-				text: `${comment.severity ? `_[${comment.severity}]_ ` : ""}${comment.message}. \n **Rationale**: ${comment.rationale} \n \n _Comment created by Mentat Code Review CLI._`,
+		const results: PostCommentResult[] = [];
+
+		for (const comment of comments) {
+			const prComment: CreatePullRequestCommentRequest = {
+				text: `${comment.message}${comment.rationale ? `.\n\n**Rationale**: ${comment.rationale}` : ""}\n\n_Comment created by Mentat Code Review CLI._`,
 				path: comment.file,
 				line: comment.line,
 				severity: comment.severity,
-			}),
-		);
+				confidence: comment.confidence,
+			};
 
-		for (const prComment of prComments) {
 			try {
-				await this.provider.createPullRequestComment(pr, prComment);
-				this.ui.success(
-					theme.success(
-						`✓ Posted comment to ${prComment.path ? `${prComment.path}:${prComment.line}` : "PR discussion"}`,
-					),
+				const created = await this.provider.createPullRequestComment(
+					pr,
+					prComment,
 				);
+				results.push({
+					comment,
+					success: true,
+					id: created.id,
+					url: created.url,
+				});
 			} catch (error) {
-				console.log(JSON.stringify(error, null, 2));
-				this.ui.error(
-					theme.error(
-						`✗ Failed to post comment to ${prComment.path ? `${prComment.path}:${prComment.line}` : "PR discussion"}: ${(error as Error).message}`,
-					),
-				);
+				results.push({
+					comment,
+					success: false,
+					error: (error as Error).message,
+				});
 			}
 		}
+
+		return results;
 	}
 }
