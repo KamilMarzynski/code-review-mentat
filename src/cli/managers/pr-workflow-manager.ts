@@ -5,7 +5,7 @@ import type {
 	GitProvider,
 	PullRequest,
 } from "../../git-providers/types";
-import type { ReviewComment, StoredReviewComment } from "../../review/types";
+import type { StoredReviewComment } from "../../review/types";
 import type { UILogger } from "../../ui/logger";
 import { theme } from "../../ui/theme";
 import { promptForPR, promptForRemote } from "../cli-prompts";
