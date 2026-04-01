@@ -51,6 +51,7 @@ type BitbucketCommit = {
 
 type BitbucketCommentResponse = {
 	id: number;
+	links: { self: [{ href: string }] };
 };
 
 type CreatePullRequestCommentBody = {
@@ -159,10 +160,6 @@ export default class BitbucketServerGitProvider implements GitProvider {
 				line: comment.line,
 			});
 		}
-		console.log(
-			"Bitbucket Server PR comment body:",
-			JSON.stringify(body, null, 2),
-		);
 		const response = await fetch(url, {
 			method: "POST",
 			headers: {
@@ -174,7 +171,6 @@ export default class BitbucketServerGitProvider implements GitProvider {
 		});
 
 		if (!response.ok) {
-			console.log("Bitbucket Server response:", await response.text());
 			throw new Error(
 				`Failed to create comment: ${response.status} ${response.statusText}`,
 			);
@@ -184,8 +180,9 @@ export default class BitbucketServerGitProvider implements GitProvider {
 
 		return {
 			id: data.id,
+			url: data.links.self[0]?.href,
 		};
-	}
+}
 
 	private normalizeAnchor(anchor: CreatePullRequestCommentAnchor) {
 		// path is always required for anchored comments
