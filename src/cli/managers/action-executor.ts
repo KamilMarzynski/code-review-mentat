@@ -16,7 +16,7 @@ import type { HandleCommentsResult, ReviewResult } from "../types";
 import type { CommentDisplayService } from "./comment-display-service";
 import type { CommentResolutionManager } from "./comment-resolution-manager";
 import type { FixSessionOrchestrator } from "./fix-session-orchestrator";
-import type { PostCommentResult, PRWorkflowManager } from "./pr-workflow-manager";
+import type { PRWorkflowManager } from "./pr-workflow-manager";
 
 /**
  * Centralized execution of workflow actions
