@@ -448,6 +448,15 @@ describe("ActionExecutor", () => {
 					remoteCommentUrl: "https://example.com/pr/42#comment-100",
 				},
 			);
+			expect(mockCache.updateComment).toHaveBeenCalledWith(
+				"feature-branch|main",
+				"2",
+				{
+					status: "posted",
+					remoteCommentId: 101,
+					remoteCommentUrl: "https://example.com/pr/42#comment-101",
+				},
+			);
 		});
 
 		it("returns partial count when some posts fail, failed comments stay accepted", async () => {

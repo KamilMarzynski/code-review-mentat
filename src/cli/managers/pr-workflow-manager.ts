@@ -264,7 +264,7 @@ export class PRWorkflowManager {
 
 		for (const comment of comments) {
 			const prComment: CreatePullRequestCommentRequest = {
-				text: `${comment.message}${comment.rationale ? `.\n\n**Rationale**: ${comment.rationale}` : ""}\n\n_Comment created by Mentat Code Review CLI._`,
+				text: `${comment.message}${comment.rationale ? `${/[.!?]$/.test(comment.message) ? "" : "."}\n\n**Rationale**: ${comment.rationale}` : ""}\n\n_Comment created by Mentat Code Review CLI._`,
 				path: comment.file,
 				line: comment.line,
 				severity: comment.severity,
