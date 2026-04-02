@@ -16,7 +16,10 @@ import { ActionExecutor } from "../action-executor";
 import type { CommentDisplayService } from "../comment-display-service";
 import type { CommentResolutionManager } from "../comment-resolution-manager";
 import type { FixSessionOrchestrator } from "../fix-session-orchestrator";
-import type { PRWorkflowManager } from "../pr-workflow-manager";
+import type {
+	PostCommentResult,
+	PRWorkflowManager,
+} from "../pr-workflow-manager";
 
 // Mock UI logger
 const mockSpinner = {
@@ -94,7 +97,7 @@ describe("ActionExecutor", () => {
 				fullDiff: "diff content",
 				editedFiles: ["file1.ts", "file2.ts"],
 			})),
-			postCommentsToRemote: mock(async () => {}),
+			postCommentsToRemote: mock(async () => [] as PostCommentResult[]),
 		} as unknown as PRWorkflowManager;
 
 		mockCommentResolution = {
@@ -182,6 +185,7 @@ describe("ActionExecutor", () => {
 			set: mock(() => {}),
 			saveMemories: mock(() => true),
 			setCacheMock: mock(() => {}),
+			updateComment: mock(async () => {}),
 		} as unknown as LocalCache;
 
 		mockMemoryService = {
@@ -405,32 +409,86 @@ describe("ActionExecutor", () => {
 	});
 
 	describe("executeSendAccepted", () => {
-		it("should send accepted comments successfully", async () => {
-			mockCache.getComments = mock(
-				async () =>
-					[
-						{
-							id: "1",
-							file: "test.ts",
-							message: "Test",
-							status: "accepted",
-						},
-						{
-							id: "2",
-							file: "test.ts",
-							message: "Test 2",
-							status: "accepted",
-						},
-					] satisfies StoredReviewComment[],
+		it("marks successful posts as posted and returns success count", async () => {
+			const acceptedComments: StoredReviewComment[] = [
+				{ id: "1", file: "test.ts", message: "Test", status: "accepted" },
+				{ id: "2", file: "other.ts", message: "Test 2", status: "accepted" },
+			];
+
+			mockCache.getComments = mock(async () => acceptedComments);
+
+			mockPRWorkflow.postCommentsToRemote = mock(
+				async (): Promise<PostCommentResult[]> => [
+					{
+						comment: acceptedComments[0] as StoredReviewComment,
+						success: true,
+						id: 100,
+						url: "https://example.com/pr/42#comment-100",
+					},
+					{
+						comment: acceptedComments[1] as StoredReviewComment,
+						success: true,
+						id: 101,
+						url: "https://example.com/pr/42#comment-101",
+					},
+				],
 			);
 
 			const count = await actionExecutor.executeSendAccepted(samplePR);
 
 			expect(count).toBe(2);
 			expect(mockPRWorkflow.postCommentsToRemote).toHaveBeenCalled();
+			expect(mockCache.updateComment).toHaveBeenCalledTimes(2);
+			expect(mockCache.updateComment).toHaveBeenCalledWith(
+				"feature-branch|main",
+				"1",
+				{
+					status: "posted",
+					remoteCommentId: 100,
+					remoteCommentUrl: "https://example.com/pr/42#comment-100",
+				},
+			);
+			expect(mockCache.updateComment).toHaveBeenCalledWith(
+				"feature-branch|main",
+				"2",
+				{
+					status: "posted",
+					remoteCommentId: 101,
+					remoteCommentUrl: "https://example.com/pr/42#comment-101",
+				},
+			);
 		});
 
-		it("should return 0 when no accepted comments exist", async () => {
+		it("returns partial count when some posts fail, failed comments stay accepted", async () => {
+			const acceptedComments: StoredReviewComment[] = [
+				{ id: "1", file: "test.ts", message: "Test", status: "accepted" },
+				{ id: "2", file: "test.ts", message: "Test 2", status: "accepted" },
+			];
+
+			mockCache.getComments = mock(async () => acceptedComments);
+
+			mockPRWorkflow.postCommentsToRemote = mock(
+				async (): Promise<PostCommentResult[]> => [
+					{
+						comment: acceptedComments[0] as StoredReviewComment,
+						success: true,
+						id: 100,
+					},
+					{
+						comment: acceptedComments[1] as StoredReviewComment,
+						success: false,
+						error: "Network error",
+					},
+				],
+			);
+
+			const count = await actionExecutor.executeSendAccepted(samplePR);
+
+			expect(count).toBe(1);
+			expect(mockCache.updateComment).toHaveBeenCalledTimes(1);
+		});
+
+		it("returns 0 when no accepted comments exist", async () => {
 			mockCache.getComments = mock(
 				async () =>
 					[
@@ -449,7 +507,7 @@ describe("ActionExecutor", () => {
 			expect(mockPRWorkflow.postCommentsToRemote).not.toHaveBeenCalled();
 		});
 
-		it("should handle exceptions gracefully", async () => {
+		it("handles postCommentsToRemote throwing gracefully", async () => {
 			mockCache.getComments = mock(
 				async () =>
 					[

@@ -531,8 +531,7 @@ export class ActionExecutor {
 	 * Execute sending accepted comments to remote PR
 	 *
 	 * @param pr - Pull request to send comments to
-	 * @param provider - Git provider for the PR
-	 * @returns Number of comments sent
+	 * @returns Number of comments successfully posted
 	 */
 	async executeSendAccepted(pr: PullRequest): Promise<number> {
 		const prKey = getPRKey(pr);
@@ -546,16 +545,34 @@ export class ActionExecutor {
 				return 0;
 			}
 
-			// Post comments to remote
-			await this.prWorkflow.postCommentsToRemote(pr, acceptedComments);
-
-			ui.success(
-				theme.success(
-					`✓ Posted ${acceptedComments.length} accepted comment(s) to the pull request`,
-				),
+			const results = await this.prWorkflow.postCommentsToRemote(
+				pr,
+				acceptedComments,
 			);
 
-			return acceptedComments.length;
+			let successCount = 0;
+
+			for (const result of results) {
+				const location = result.comment.file
+					? `${result.comment.file}${result.comment.line ? `:${result.comment.line}` : ""}`
+					: "PR discussion";
+
+				if (result.success) {
+					await this.cache.updateComment(prKey, result.comment.id, {
+						status: "posted",
+						remoteCommentId: result.id,
+						remoteCommentUrl: result.url,
+					});
+					ui.success(theme.success(`✓ Posted: ${result.url ?? location}`));
+					successCount++;
+				} else {
+					ui.error(
+						theme.error(`✗ Failed to post ${location}: ${result.error}`),
+					);
+				}
+			}
+
+			return successCount;
 		} catch (error) {
 			ui.error(
 				theme.error(
@@ -586,12 +603,7 @@ export class ActionExecutor {
 		const shouldSend = await promptToSendCommentsToRemote();
 
 		if (shouldSend) {
-			await this.prWorkflow.postCommentsToRemote(pr, acceptedComments);
-			ui.success(
-				theme.success(
-					`✓ Posted ${acceptedComments.length} accepted comment(s) to the pull request`,
-				),
-			);
+			await this.executeSendAccepted(pr);
 		}
 	}
 

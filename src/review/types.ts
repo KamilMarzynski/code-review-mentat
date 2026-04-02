@@ -5,7 +5,8 @@ export type ReviewCommentStatus =
 	| "pending" // Not yet addressed
 	| "fixed" // Fixed and accepted
 	| "accepted" // Accepted as-is
-	| "rejected"; // Rejected
+	| "rejected" // Rejected
+	| "posted"; // Posted to remote PR
 
 export type ReviewComment = {
 	id?: string;
@@ -25,6 +26,8 @@ export type ReviewComment = {
 export type StoredReviewComment = ReviewComment & {
 	id: string;
 	codeSnippet?: string; // Code snippet related to the comment
+	remoteCommentId?: number; // Provider-assigned ID after posting
+	remoteCommentUrl?: string; // Permalink to comment on remote
 };
 
 export type FixIteration = {

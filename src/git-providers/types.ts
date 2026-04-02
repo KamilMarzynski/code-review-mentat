@@ -65,10 +65,12 @@ export type CreatePullRequestCommentRequest = {
 	line?: number;
 
 	severity?: "nit" | "suggestion" | "issue" | "risk";
+	confidence?: "high" | "medium" | "low";
 };
 
 export type CreatedPrComment = {
 	id: number;
+	url?: string;
 };
 
 /**
