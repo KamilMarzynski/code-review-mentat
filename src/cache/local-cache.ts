@@ -30,6 +30,7 @@ export type CachedContext = {
 		// Repo identity
 		repoPath: string;
 		repoRemote?: string;
+		importedAt?: string; // ISO timestamp of last successful remote comment import
 
 		version: string;
 	};
@@ -320,6 +321,35 @@ export default class LocalCache {
 
 		writeFileSync(cachePath, JSON.stringify(cached, null, 2), "utf-8");
 		return true;
+	}
+
+	/**
+	 * Record the timestamp of the last successful remote comment import
+	 */
+	setImportedAt(
+		input: {
+			mrNumber?: string;
+			sourceBranch: string;
+			targetBranch: string;
+		},
+		timestamp: string,
+	): void {
+		const key = this.getCacheKey(input);
+		const cachePath = this.getCachePath(key);
+
+		if (!existsSync(cachePath)) {
+			return;
+		}
+
+		try {
+			const cached: CachedContext = JSON.parse(
+				readFileSync(cachePath, "utf-8"),
+			);
+			cached.meta.importedAt = timestamp;
+			writeFileSync(cachePath, JSON.stringify(cached, null, 2), "utf-8");
+		} catch {
+			// Ignore — non-critical
+		}
 	}
 
 	/**
