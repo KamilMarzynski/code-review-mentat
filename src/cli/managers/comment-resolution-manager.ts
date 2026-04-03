@@ -3,6 +3,7 @@ import * as clack from "@clack/prompts";
 import type LocalCache from "../../cache/local-cache";
 import type { MemoryService } from "../../memory/memory-service";
 import type {
+	ImportedComment,
 	ReviewComment,
 	ReviewCommentStatus,
 	StoredReviewComment,
@@ -10,7 +11,10 @@ import type {
 import type { CodeContextReader } from "../../ui/code-context-reader";
 import type { UILogger } from "../../ui/logger";
 import { theme } from "../../ui/theme";
-import { promptCommentAction } from "../cli-prompts";
+import {
+	promptCommentAction,
+	promptImportedCommentAction,
+} from "../cli-prompts";
 import type { HandleCommentsResult } from "../types";
 
 /**
@@ -311,6 +315,184 @@ export class CommentResolutionManager {
 			processed: summary.fixed + summary.accepted + summary.rejected,
 			fixed: summary.fixed,
 			accepted: summary.accepted,
+			rejected: summary.rejected,
+			skipped: summary.skipped,
+		};
+	}
+
+	/**
+	 * Execute reviewer comment resolution workflow.
+	 *
+	 * Differs from handleComments: no "accept" action (can't post imported comments
+	 * back to remote). Actions: fix, create_memory, dismiss, skip, quit.
+	 */
+	public async handleImportedComments(
+		prKey: string,
+		importedComments: ImportedComment[],
+		onFixRequested: (
+			comment: ReviewComment,
+			prKey: string,
+			summary: {
+				accepted: number;
+				fixed: number;
+				rejected: number;
+				skipped: number;
+			},
+		) => Promise<void>,
+		displayCommentFn: (comment: ReviewComment) => Promise<void>,
+	): Promise<HandleCommentsResult> {
+		console.log("");
+		this.ui.section("Reviewer Comment Resolution");
+
+		if (importedComments.length === 0) {
+			this.ui.success(theme.success("✓ No open reviewer comments"));
+			return { processed: 0, fixed: 0, accepted: 0, rejected: 0, skipped: 0 };
+		}
+
+		this.ui.info(
+			theme.secondary(
+				`Found ${importedComments.length} open reviewer comment(s)`,
+			),
+		);
+
+		const summary = { accepted: 0, fixed: 0, rejected: 0, skipped: 0 };
+
+		for (let i = 0; i < importedComments.length; i++) {
+			const comment = importedComments[i];
+			if (!comment) continue;
+
+			this.ui.space();
+			this.ui.log(
+				theme.primary(`━━━ Comment ${i + 1} of ${importedComments.length} ━━━`),
+			);
+			this.ui.info(
+				`${theme.secondary("From:")} ${comment.importMeta.remoteAuthor}  ${theme.muted(comment.importMeta.remoteUrl)}`,
+			);
+			this.ui.space();
+
+			let shouldContinue = true;
+			let hideCreateMemory = comment.memoryCreated === true;
+
+			while (shouldContinue) {
+				await displayCommentFn(comment);
+				this.ui.space();
+
+				const action = await promptImportedCommentAction(hideCreateMemory);
+
+				if (action === null) {
+					this.ui.cancel("Comment resolution cancelled");
+					shouldContinue = false;
+					break;
+				}
+
+				switch (action) {
+					case "create_memory": {
+						const notesResponse = await clack.text({
+							message:
+								"Any optional context/notes? (Enter to skip, Ctrl+C to cancel)",
+							placeholder: 'e.g., "This applies to all async handlers"',
+						});
+
+						if (clack.isCancel(notesResponse)) {
+							this.ui.logStep(theme.muted("Memory creation cancelled"));
+							break;
+						}
+
+						const additionalContext =
+							typeof notesResponse === "string" &&
+							notesResponse.trim().length > 0
+								? notesResponse.trim()
+								: undefined;
+
+						this.ui.info(theme.accent("Creating memory from comment..."));
+
+						try {
+							const result = await this.memoryService.createMemory({
+								file: comment.file,
+								severity: comment.severity ?? "suggestion",
+								code: comment.codeSnippet ?? "",
+								comment: comment.message,
+								additionalContext,
+							});
+
+							await this.cache.updateComment(prKey, comment.id, {
+								memoryCreated: true,
+							});
+
+							this.ui.success(theme.success("✓ Memory stored"));
+							this.ui.info(theme.secondary(`Situation: ${result.situation}`));
+							this.ui.info(theme.secondary(`Lesson: ${result.lesson}`));
+						} catch (error) {
+							this.ui.warn(
+								theme.warning(
+									`⚠️ Failed to create memory: ${error instanceof Error ? error.message : String(error)}`,
+								),
+							);
+						}
+
+						this.ui.space();
+						this.ui.info(
+							theme.secondary("Now decide what to do with this comment:"),
+						);
+						this.ui.space();
+						hideCreateMemory = true;
+						break;
+					}
+
+					case "fix": {
+						await onFixRequested(comment, prKey, summary);
+						shouldContinue = false;
+						break;
+					}
+
+					case "dismiss": {
+						await this.cache.updateComment(prKey, comment.id, {
+							status: "rejected",
+						});
+						summary.rejected++;
+						this.ui.logStep(theme.muted("✗ Comment dismissed"));
+						shouldContinue = false;
+						break;
+					}
+
+					case "skip": {
+						summary.skipped++;
+						this.ui.logStep(theme.muted("⏭ Comment skipped"));
+						shouldContinue = false;
+						break;
+					}
+
+					case "quit": {
+						this.ui.info(
+							theme.secondary("Exiting reviewer comment resolution..."),
+						);
+
+						if (summary.fixed + summary.rejected > 0) {
+							console.log("");
+							this.displayResolutionSummary(summary);
+						}
+
+						this.ui.sectionComplete("Reviewer comment resolution paused");
+						return {
+							processed: summary.fixed + summary.rejected,
+							fixed: summary.fixed,
+							accepted: 0,
+							rejected: summary.rejected,
+							skipped: summary.skipped,
+						};
+					}
+				}
+			}
+		}
+
+		console.log("");
+		this.displayResolutionSummary(summary);
+		this.ui.sectionComplete("Reviewer comment resolution complete");
+
+		return {
+			processed: summary.fixed + summary.rejected,
+			fixed: summary.fixed,
+			accepted: 0,
 			rejected: summary.rejected,
 			skipped: summary.skipped,
 		};
