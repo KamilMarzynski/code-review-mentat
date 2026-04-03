@@ -3,9 +3,14 @@ import { getPRKey, type PullRequest } from "../../git-providers/types";
 import type { MemoryService } from "../../memory/memory-service";
 import type { MemoryQueryGenerator } from "../../memory/query-generator";
 import type { CodeReviewer } from "../../review/code-reviewer";
+import type { CommentImporter } from "../../review/comment-importer";
 import type { ContextGatherer } from "../../review/context-gatherer";
 import type { ContextGathererFactory } from "../../review/context-gatherer-factory";
-import type { ContextEvent, ReviewEvent } from "../../review/types";
+import type {
+	ContextEvent,
+	ImportedComment,
+	ReviewEvent,
+} from "../../review/types";
 import { ui } from "../../ui/logger";
 import { theme } from "../../ui/theme";
 import {
@@ -51,6 +56,7 @@ export class ActionExecutor {
 		private cache: LocalCache,
 		private memoryService: MemoryService,
 		private memoryQueryGenerator: MemoryQueryGenerator,
+		private commentImporter: CommentImporter,
 	) {}
 
 	/**
@@ -605,6 +611,64 @@ export class ActionExecutor {
 		if (shouldSend) {
 			await this.executeSendAccepted(pr);
 		}
+	}
+
+	/**
+	 * Fetch reviewer comments from remote and enter handling loop.
+	 *
+	 * Always re-fetches to pick up new/updated comments, then filters
+	 * to those still open (status: "imported") for processing.
+	 */
+	async executeHandleRemote(pr: PullRequest): Promise<void> {
+		const prKey = getPRKey(pr);
+		const spinner = ui.spinner();
+		spinner.start(theme.accent("Fetching reviewer comments from remote"));
+
+		try {
+			const result = await this.commentImporter.importForPR(
+				this.prWorkflow.getProvider(),
+				pr,
+			);
+			spinner.stop(
+				theme.success(
+					`✓ ${result.fetched} comment(s) fetched` +
+						(result.added > 0 || result.updated > 0
+							? ` (${result.added} new, ${result.updated} updated)`
+							: ""),
+				),
+			);
+		} catch (error) {
+			spinner.stop(theme.error("✗ Failed to fetch reviewer comments"));
+			ui.error(theme.muted(`   ${(error as Error).message}`));
+			return;
+		}
+
+		const allComments = await this.cache.getComments(prKey);
+		const importedPending = allComments.filter(
+			(c) => c.source === "imported" && c.status === "imported",
+		) as ImportedComment[];
+
+		if (importedPending.length === 0) {
+			ui.info(theme.muted("No open reviewer comments found."));
+			return;
+		}
+
+		await this.commentResolution.handleImportedComments(
+			prKey,
+			importedPending,
+			async (comment, prKeyArg, interimSummary) => {
+				const optionalNotes = await this.commentDisplay.promptOptionalNotes();
+				await this.fixSession.runFixSession(
+					comment,
+					prKeyArg,
+					optionalNotes,
+					interimSummary,
+				);
+			},
+			async (comment) => {
+				await this.commentDisplay.displayCommentWithContext(comment);
+			},
+		);
 	}
 
 	/**
