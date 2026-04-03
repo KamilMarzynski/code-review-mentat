@@ -172,6 +172,10 @@ export class CLIOrchestrator {
 				await this.actionExecutor.executeSendAccepted(context.pr);
 				break;
 
+			case "handle_remote":
+				await this.actionExecutor.executeHandleRemote(context.pr);
+				break;
+
 			case "exit":
 				// Should not reach here (handled in menuLoop)
 				break;
