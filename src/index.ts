@@ -18,6 +18,7 @@ import { MemoryService } from "./memory/memory-service";
 import { MemoryQueryGenerator } from "./memory/query-generator";
 import { CodeReviewer } from "./review/code-reviewer";
 import { CommentFixer } from "./review/comment-fixer";
+import { CommentImporter } from "./review/comment-importer";
 import { ContextGathererFactory } from "./review/context-gatherer-factory";
 import { CodeContextReader } from "./ui/code-context-reader";
 import { UILogger } from "./ui/logger";
@@ -138,6 +139,7 @@ const main = async () => {
 	// - PostActionHandler: Provides smart flow transitions after actions
 	// ============================================================================
 	const stateManager = new WorkflowStateManager(cache);
+	const commentImporter = new CommentImporter(cache);
 	const actionExecutor = new ActionExecutor(
 		prWorkflow,
 		commentResolution,
@@ -148,6 +150,7 @@ const main = async () => {
 		cache,
 		memoryService,
 		memoryQueryGenerator,
+		commentImporter,
 	);
 	const postActionHandler = new PostActionHandler(stateManager);
 
