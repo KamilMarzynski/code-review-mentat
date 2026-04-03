@@ -31,6 +31,13 @@ export class PRWorkflowManager {
 		this.provider = this.gitProviderFactory.create(remote);
 	}
 
+	public getProvider(): GitProvider {
+		if (!this.provider) {
+			throw new Error("Git provider not set. Call setProviderForRemote first.");
+		}
+		return this.provider;
+	}
+
 	public async checkWorkspaceClean(): Promise<boolean> {
 		const status = await this.git.hasUncommittedChanges();
 
