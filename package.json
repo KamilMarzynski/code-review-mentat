@@ -12,6 +12,7 @@
 		"install:global": "bun run build && chmod +x code-review && npm link",
 		"uninstall:global": "npm unlink -g code-review-mentat",
 		"start": "bun run src/index.ts",
+		"test": "bun test",
 		"lint": "bun biome check",
 		"lint:fix": "biome check --write .",
 		"postinstall": "cd node_modules/agent-memories && bun install && bun x tsup"
