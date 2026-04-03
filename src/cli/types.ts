@@ -39,9 +39,10 @@ export interface WorkflowState {
 	fixedCount: number;
 	rejectedCount: number;
 
-	// Future: Remote comments state
+	// Remote comments state
 	hasRemoteComments: boolean;
 	remoteCommentsCount: number;
+	importedPendingCount: number; // imported comments not yet fixed/dismissed
 
 	// PR state
 	currentCommit: string;

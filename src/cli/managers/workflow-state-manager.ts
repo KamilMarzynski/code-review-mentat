@@ -49,15 +49,24 @@ export class WorkflowStateManager {
 		const hasComments = comments.length > 0;
 
 		const pendingCount = comments.filter(
-			(c) => c.status === "pending" || !c.status,
+			(c) => (c.status === "pending" || !c.status) && c.source !== "imported",
 		).length;
 		const acceptedCount = comments.filter(
 			(c) => c.status === "accepted",
 		).length;
 		const fixedCount = comments.filter((c) => c.status === "fixed").length;
 		const rejectedCount = comments.filter(
-			(c) => c.status === "rejected",
+			(c) => c.status === "rejected" && c.source !== "imported",
 		).length;
+
+		// Remote comments state
+		const importedPendingCount = comments.filter(
+			(c) => c.source === "imported" && c.status === "imported",
+		).length;
+		const remoteCommentsCount = comments.filter(
+			(c) => c.source === "imported",
+		).length;
+		const hasRemoteComments = cacheMetadata?.importedAt != null;
 
 		// Check for new commits since last context/review
 		const hasNewCommits = contextMeta
@@ -73,8 +82,9 @@ export class WorkflowStateManager {
 			acceptedCount,
 			fixedCount,
 			rejectedCount,
-			hasRemoteComments: false, // Future feature
-			remoteCommentsCount: 0, // Future feature
+			hasRemoteComments,
+			remoteCommentsCount,
+			importedPendingCount,
 			currentCommit: pr.source.commitHash,
 			hasNewCommits,
 		};
@@ -114,10 +124,10 @@ export class WorkflowStateManager {
 			actions.push("send_accepted");
 		}
 
-		// Future: Remote comments
-		// if (state.hasRemoteComments) {
-		//   actions.push("handle_remote");
-		// }
+		// Remote comments: always available so user can trigger import or handle open ones
+		if (!(state.hasRemoteComments && state.importedPendingCount === 0)) {
+			actions.push("handle_remote");
+		}
 
 		// Exit - always available
 		actions.push("exit");
@@ -202,12 +212,18 @@ export class WorkflowStateManager {
 					break;
 
 				case "handle_remote":
-					// Future feature
 					options.push({
 						value: "handle_remote",
-						label: `💬 Review ${state.remoteCommentsCount} Remote Comment${state.remoteCommentsCount !== 1 ? "s" : ""}`,
-						hint: "Review comments from pull request",
-						recommended: false,
+						label:
+							state.importedPendingCount > 0
+								? `💬 Handle ${state.importedPendingCount} Reviewer Comment${state.importedPendingCount !== 1 ? "s" : ""}`
+								: "💬 Import Reviewer Comments",
+						hint:
+							state.importedPendingCount > 0
+								? "Address comments from remote reviewers (fix, dismiss, or create memory)"
+								: "Fetch and address comments left by remote reviewers",
+						recommended:
+							state.importedPendingCount > 0 && state.pendingCount === 0,
 					});
 					break;
 
