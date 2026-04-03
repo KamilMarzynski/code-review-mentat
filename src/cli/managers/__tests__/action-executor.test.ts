@@ -4,6 +4,7 @@ import type { PullRequest } from "../../../git-providers/types";
 import type { MemoryService } from "../../../memory/memory-service";
 import type { MemoryQueryGenerator } from "../../../memory/query-generator";
 import type { CodeReviewer } from "../../../review/code-reviewer";
+import type { CommentImporter } from "../../../review/comment-importer";
 import type { ContextGatherer } from "../../../review/context-gatherer";
 import type { ContextGathererFactory } from "../../../review/context-gatherer-factory";
 import type {
@@ -58,6 +59,7 @@ describe("ActionExecutor", () => {
 	let mockCache: LocalCache;
 	let mockMemoryService: MemoryService;
 	let mockMemoryQueryGenerator: MemoryQueryGenerator;
+	let mockCommentImporter: CommentImporter;
 
 	// Sample pull request for testing
 	const samplePR: PullRequest = {
@@ -85,6 +87,7 @@ describe("ActionExecutor", () => {
 
 		hasRemoteComments: false,
 		remoteCommentsCount: 0,
+		importedPendingCount: 0,
 		currentCommit: "abc123def456",
 		hasNewCommits: false,
 	};
@@ -196,6 +199,10 @@ describe("ActionExecutor", () => {
 			generateQueries: mock(async () => []),
 		} as unknown as MemoryQueryGenerator;
 
+		mockCommentImporter = {
+			importForPR: mock(async () => ({ fetched: 0, added: 0, updated: 0 })),
+		} as unknown as CommentImporter;
+
 		actionExecutor = new ActionExecutor(
 			mockPRWorkflow,
 			mockCommentResolution,
@@ -206,6 +213,7 @@ describe("ActionExecutor", () => {
 			mockCache,
 			mockMemoryService,
 			mockMemoryQueryGenerator,
+			mockCommentImporter,
 		);
 	});
 

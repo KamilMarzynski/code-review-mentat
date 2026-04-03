@@ -231,6 +231,9 @@ export class CLIOrchestrator {
 			case "send_accepted":
 				return await this.postActionHandler.afterAcceptedSent(context.pr);
 
+			case "handle_remote":
+				return "show_menu";
+
 			default:
 				return "show_menu";
 		}

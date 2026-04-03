@@ -230,43 +230,58 @@ export default class GitHubProvider extends GitProvider {
 		}
 
 		const { projectKey: owner, repoSlug: repo } = this.remote;
-		const url = `${GITHUB_API}/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/pulls/${pr.id}/comments?per_page=100`;
+		const baseUrl = `${GITHUB_API}/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/pulls/${pr.id}/comments`;
 
-		const response = await fetch(url, {
-			headers: {
-				Authorization: `Bearer ${token}`,
-				Accept: "application/vnd.github+json",
-			},
-		});
+		const allComments: RemoteComment[] = [];
+		let page = 1;
 
-		this.handleRateLimit(response);
+		while (true) {
+			const url = `${baseUrl}?per_page=100&page=${page}`;
+			const response = await fetch(url, {
+				headers: {
+					Authorization: `Bearer ${token}`,
+					Accept: "application/vnd.github+json",
+				},
+			});
 
-		if (!response.ok) {
-			if (response.status === 401) {
+			this.handleRateLimit(response);
+
+			if (!response.ok) {
+				if (response.status === 401) {
+					throw new Error(
+						"GitHub authentication failed: GITHUB_TOKEN may be invalid",
+					);
+				}
 				throw new Error(
-					"GitHub authentication failed: GITHUB_TOKEN may be invalid",
+					`Failed to fetch PR comments: ${response.status} ${response.statusText}`,
 				);
 			}
-			throw new Error(
-				`Failed to fetch PR comments: ${response.status} ${response.statusText}`,
-			);
+
+			const data = (await response.json()) as GitHubPRComment[];
+
+			for (const c of data) {
+				allComments.push({
+					id: String(c.id),
+					author: c.user.login,
+					content: c.body,
+					filePath: c.path || undefined,
+					line: c.line ?? undefined,
+					startLine: c.start_line ?? undefined,
+					url: c.html_url,
+					// position === null means the comment is on an outdated diff hunk
+					resolved: c.position === null,
+				});
+			}
+
+			// GitHub paginates via Link header; an empty page means we're done
+			if (data.length < 100) {
+				break;
+			}
+
+			page++;
 		}
 
-		const data = (await response.json()) as GitHubPRComment[];
-
-		return data.map(
-			(c): RemoteComment => ({
-				id: String(c.id),
-				author: c.user.login,
-				content: c.body,
-				filePath: c.path || undefined,
-				line: c.line ?? undefined,
-				startLine: c.start_line ?? undefined,
-				url: c.html_url,
-				// position === null means the comment is on an outdated diff hunk
-				resolved: c.position === null,
-			}),
-		);
+		return allComments;
 	}
 
 	private handleRateLimit(response: Response): void {
