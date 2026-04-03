@@ -313,3 +313,50 @@ export async function promptWorkflowMenu(
 
 	return selectedAction as WorkflowAction;
 }
+
+export async function promptImportedCommentAction(
+	hideCreateMemory = false,
+): Promise<"fix" | "dismiss" | "skip" | "quit" | "create_memory" | null> {
+	const allOptions = [
+		{
+			value: "fix",
+			label: "🔧 Fix with Claude",
+			hint: "Plan and implement a code fix for this comment",
+		},
+		{
+			value: "create_memory",
+			label: "Create memory",
+			hint: "Distil this comment into a reusable memory",
+		},
+		{
+			value: "dismiss",
+			label: "✗ Dismiss",
+			hint: "Dismiss this comment without changes",
+		},
+		{
+			value: "skip",
+			label: "⏭ Skip",
+			hint: "Skip for now, address in next session",
+		},
+		{
+			value: "quit",
+			label: "💤 Quit",
+			hint: "Stop processing and exit",
+		},
+	];
+
+	const options = hideCreateMemory
+		? allOptions.filter((opt) => opt.value !== "create_memory")
+		: allOptions;
+
+	const action = await clack.select({
+		message: theme.primary("What should we do with this reviewer comment?"),
+		options,
+	});
+
+	if (clack.isCancel(action)) {
+		return null;
+	}
+
+	return action as "fix" | "dismiss" | "skip" | "quit" | "create_memory";
+}
