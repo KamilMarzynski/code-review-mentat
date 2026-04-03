@@ -3,6 +3,7 @@ import {
 	type CreatePullRequestCommentRequest,
 	GitProvider,
 	type PullRequest,
+	type RemoteComment,
 	type RemoteInfo,
 } from "./types";
 
@@ -182,6 +183,12 @@ export default class BitbucketServerGitProvider implements GitProvider {
 			id: data.id,
 			url: data.links.self[0]?.href,
 		};
+	}
+
+	async fetchPullRequestComments(_pr: PullRequest): Promise<RemoteComment[]> {
+		throw new Error(
+			"fetchPullRequestComments not yet implemented for Bitbucket Server",
+		);
 	}
 
 	private normalizeAnchor(anchor: CreatePullRequestCommentAnchor) {

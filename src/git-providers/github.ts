@@ -3,6 +3,7 @@ import {
 	type CreatePullRequestCommentRequest,
 	GitProvider,
 	type PullRequest,
+	type RemoteComment,
 	type RemoteInfo,
 } from "./types";
 
@@ -209,6 +210,10 @@ export default class GitHubProvider extends GitProvider {
 
 		const data = (await response.json()) as GitHubReviewResponse;
 		return { id: data.id, url: data.html_url };
+	}
+
+	async fetchPullRequestComments(_pr: PullRequest): Promise<RemoteComment[]> {
+		throw new Error("fetchPullRequestComments not yet implemented for GitHub");
 	}
 
 	private handleRateLimit(response: Response): void {

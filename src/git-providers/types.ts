@@ -7,6 +7,8 @@ export abstract class GitProvider {
 		comment: CreatePullRequestCommentRequest,
 	): Promise<CreatedPrComment>;
 
+	abstract fetchPullRequestComments(pr: PullRequest): Promise<RemoteComment[]>;
+
 	static parseRemote(sshRemote: string): RemoteInfo | undefined {
 		const regexpMatchArray = sshRemote
 			.trim()
@@ -72,6 +74,17 @@ export type CreatedPrComment = {
 	id: number;
 	url?: string;
 };
+
+export interface RemoteComment {
+	id: string;
+	author: string;
+	content: string;
+	filePath?: string;
+	line?: number;
+	startLine?: number;
+	url: string;
+	resolved: boolean;
+}
 
 /**
  * Utility function to generate a consistent PR key for caching and identification
