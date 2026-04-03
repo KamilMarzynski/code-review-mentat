@@ -6,7 +6,8 @@ export type ReviewCommentStatus =
 	| "fixed" // Fixed and accepted
 	| "accepted" // Accepted as-is
 	| "rejected" // Rejected
-	| "posted"; // Posted to remote PR
+	| "posted" // Posted to remote PR
+	| "imported"; // Fetched from remote reviewer
 
 export type ReviewComment = {
 	id?: string;
@@ -19,16 +20,52 @@ export type ReviewComment = {
 	rationale?: string;
 	status: ReviewCommentStatus;
 	confidence?: "high" | "medium" | "low";
-	verifiedBy?: string; // Tool used to verify (e.g., "Grep: found 3 usages")
-	memoryCreated?: boolean; // Track if memory was created for this comment
+	verifiedBy?: string;
+	memoryCreated?: boolean;
+};
+
+export type ImportMetadata = {
+	remoteId: string; // provider's comment ID
+	remoteAuthor: string; // reviewer's username
+	remoteUrl: string; // permalink to original comment
+	importedAt: string; // ISO timestamp of fetch
+	resolvedOnRemote: boolean; // whether comment is resolved on remote
 };
 
 export type StoredReviewComment = ReviewComment & {
 	id: string;
-	codeSnippet?: string; // Code snippet related to the comment
-	remoteCommentId?: number; // Provider-assigned ID after posting
-	remoteCommentUrl?: string; // Permalink to comment on remote
+	codeSnippet?: string;
+	remoteCommentId?: number; // outbound: ID after posting agent comment
+	remoteCommentUrl?: string; // outbound: URL after posting agent comment
+	source?: "generated" | "imported";
+	importMeta?: ImportMetadata;
 };
+
+export type GeneratedComment = StoredReviewComment & {
+	source: "generated";
+	status: "pending" | "accepted" | "fixed" | "rejected" | "posted";
+	importMeta?: never;
+};
+
+export type ImportedComment = StoredReviewComment & {
+	source: "imported";
+	status: "imported" | "fixed" | "rejected";
+	importMeta: ImportMetadata;
+};
+
+export type AnyStoredComment = GeneratedComment | ImportedComment;
+
+export function isImportedComment(
+	c: StoredReviewComment,
+): c is ImportedComment {
+	return c.source === "imported" && c.importMeta != null;
+}
+
+export function isGeneratedComment(
+	c: StoredReviewComment,
+): c is GeneratedComment {
+	return c.source !== "imported";
+}
 
 export type FixIteration = {
 	attemptNumber: number;
