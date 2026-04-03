@@ -20,8 +20,8 @@ export type ReviewComment = {
 	rationale?: string;
 	status: ReviewCommentStatus;
 	confidence?: "high" | "medium" | "low";
-	verifiedBy?: string;
-	memoryCreated?: boolean;
+	verifiedBy?: string; // Tool used to verify (e.g., "Grep: found 3 usages")
+	memoryCreated?: boolean; // Track if memory was created for this comment
 };
 
 export type ImportMetadata = {
@@ -49,10 +49,16 @@ export type GeneratedComment = StoredReviewComment & {
 
 export type ImportedComment = StoredReviewComment & {
 	source: "imported";
+	// "pending" excluded intentionally: imported comments are not agent-generated
+	// so they cannot be accepted/posted. Lifecycle: imported → fixed | rejected.
 	status: "imported" | "fixed" | "rejected";
 	importMeta: ImportMetadata;
 };
 
+// AnyStoredComment is used where source is guaranteed to be set.
+// Comments deserialized from cache before this feature have source === undefined
+// and are StoredReviewComment (not AnyStoredComment). Use isImportedComment()
+// or filter by source === "imported" directly when working with mixed sets.
 export type AnyStoredComment = GeneratedComment | ImportedComment;
 
 export function isImportedComment(
@@ -64,7 +70,7 @@ export function isImportedComment(
 export function isGeneratedComment(
 	c: StoredReviewComment,
 ): c is GeneratedComment {
-	return c.source !== "imported";
+	return c.source === "generated";
 }
 
 export type FixIteration = {
