@@ -55,6 +55,15 @@ type BitbucketCommentResponse = {
 	links: { self: [{ href: string }] };
 };
 
+type BitbucketPRComment = {
+	id: number;
+	text: string;
+	author: { slug: string; displayName?: string };
+	anchor?: { path: string; line?: number };
+	links: { self: [{ href: string }] };
+	threadResolved: boolean;
+};
+
 type CreatePullRequestCommentBody = {
 	text: string;
 	severity: string;
@@ -185,10 +194,52 @@ export default class BitbucketServerGitProvider implements GitProvider {
 		};
 	}
 
-	async fetchPullRequestComments(_pr: PullRequest): Promise<RemoteComment[]> {
-		throw new Error(
-			"fetchPullRequestComments not yet implemented for Bitbucket Server",
-		);
+	async fetchPullRequestComments(pr: PullRequest): Promise<RemoteComment[]> {
+		if (!BB_TOKEN) {
+			throw new Error("BB_TOKEN is not set");
+		}
+
+		const allComments: RemoteComment[] = [];
+		let start = 0;
+
+		while (true) {
+			const url =
+				`${this.buildPullRequestsUrl()}/${encodeURIComponent(String(pr.id))}/comments` +
+				`?limit=100&start=${start}`;
+
+			const response = await fetch(url, {
+				headers: { Authorization: `Bearer ${BB_TOKEN}` },
+			});
+
+			if (!response.ok) {
+				throw new Error(
+					`Failed to fetch PR comments: ${response.status} ${response.statusText}`,
+				);
+			}
+
+			const data =
+				(await response.json()) as BitbucketPagedResponse<BitbucketPRComment>;
+
+			for (const c of data.values) {
+				allComments.push({
+					id: String(c.id),
+					author: c.author.displayName ?? c.author.slug,
+					content: c.text,
+					filePath: c.anchor?.path,
+					line: c.anchor?.line,
+					url: c.links.self[0]?.href ?? "",
+					resolved: c.threadResolved,
+				});
+			}
+
+			if (data.isLastPage) {
+				break;
+			}
+
+			start += data.values.length;
+		}
+
+		return allComments;
 	}
 
 	private normalizeAnchor(anchor: CreatePullRequestCommentAnchor) {
